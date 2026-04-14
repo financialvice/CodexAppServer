@@ -119,3 +119,21 @@ Example:
 - package `0.120.0`
 - generated from `codex 0.120.0`
 
+## CI And Release
+
+Two GitHub Actions workflows are included:
+
+- `CI`
+  - installs the pinned Codex version
+  - regenerates bindings
+  - verifies generated files are committed
+  - runs `swift build` and `swift test`
+
+- `Release`
+  - manual workflow
+  - requires the input version to match `.codex-version`
+  - reruns generation, build, and tests
+  - creates and pushes a Git tag
+  - creates a GitHub Release
+
+The release workflow assumes the repository state is already committed and ready. It does not auto-commit regenerated files.
