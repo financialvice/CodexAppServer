@@ -36,9 +36,9 @@ Those are omitted on purpose to keep the package small and predictable.
 ## Requirements
 
 - Swift 6.3+
-- macOS
-- `codex` installed locally for managed local launch
-- exact match between local `codex` version and the generated binding version
+- Apple platforms
+- `codex` installed locally for managed local launch on macOS
+- exact match between the app-server Codex version and the generated binding version when using exact version policy
 
 Current pinned Codex version: `0.120.0`
 
@@ -64,6 +64,8 @@ swift run CodexAppServerExample
 ```
 
 ## Local Managed Example
+
+`localManaged()` is available on macOS.
 
 ```swift
 import CodexAppServer
@@ -98,7 +100,7 @@ for await event in client.events {
 
 ## Remote Example
 
-For remote connections, exact version policy requires the caller to declare the remote Codex version explicitly:
+Remote websocket connections are available on every supported platform. For remote connections, exact version policy requires the caller to declare the expected remote Codex version explicitly, and the client verifies it again against the `initialize.userAgent` returned by the server:
 
 ```swift
 let client = try await CodexClient.connect(

@@ -13,7 +13,9 @@ public actor CodexClient {
     private var webSocketTask: URLSessionWebSocketTask?
     private var delegate: WebSocketOpenDelegate?
     private var listenTask: Task<Void, Never>?
+#if os(macOS)
     private var localProcess: LocalCodexAppServerProcess?
+#endif
     private var nextRequestID = 1
     private var pendingRequests: [Int: CheckedContinuation<Data, Error>] = [:]
     private var connected = false
@@ -27,6 +29,16 @@ public actor CodexClient {
     }
 
     deinit {
+        listenTask?.cancel()
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        session?.invalidateAndCancel()
+#if os(macOS)
+        if let localProcess {
+            Task {
+                await localProcess.stop()
+            }
+        }
+#endif
         eventContinuation.finish()
     }
 
@@ -90,6 +102,7 @@ public actor CodexClient {
 
         let connectionInfo: (url: URL, authToken: String?)
         switch connection {
+#if os(macOS)
         case .localManaged(let localOptions):
             let process = try await LocalCodexAppServerProcess.launch(
                 options: localOptions,
@@ -97,7 +110,7 @@ public actor CodexClient {
             )
             self.localProcess = process
             connectionInfo = (process.websocketURL, nil)
-
+#endif
         case .remote(let remoteOptions):
             try validate(remoteOptions: remoteOptions, policy: options.versionPolicy)
             connectionInfo = (remoteOptions.url, remoteOptions.authToken)
@@ -118,6 +131,7 @@ public actor CodexClient {
                 clientInfo: options.clientInfo
             )
         )
+        try validate(serverInfo: response, policy: options.versionPolicy)
         self.serverInfo = response
         try await sendInitializedNotification()
         emit(.connectionStateChanged(.initialized))
@@ -138,6 +152,20 @@ public actor CodexClient {
                 policy: policy
             )
         }
+    }
+
+    private func validate(serverInfo: InitializeResponse, policy: VersionPolicy) throws {
+        guard policy == .exact else { return }
+        guard let actualVersion = CodexVersionChecker.parseVersion(from: serverInfo.userAgent) else {
+            throw CodexClientError.invalidResponse(
+                "unable to parse codex version from initialize.userAgent: \(serverInfo.userAgent)"
+            )
+        }
+        try CodexVersionChecker.validate(
+            actual: actualVersion,
+            expected: CodexBindingMetadata.codexVersion,
+            policy: policy
+        )
     }
 
     private func openWebSocket(url: URL, authToken: String?) async throws {
@@ -242,7 +270,7 @@ public actor CodexClient {
         while connected, let task = webSocketTask {
             do {
                 let message = try await task.receive()
-                try await handle(message: message)
+                await handle(message: message)
             } catch {
                 await shutdown(reason: error.localizedDescription)
                 return
@@ -250,7 +278,7 @@ public actor CodexClient {
         }
     }
 
-    private func handle(message: URLSessionWebSocketTask.Message) async throws {
+    private func handle(message: URLSessionWebSocketTask.Message) async {
         let data: Data
         switch message {
         case .string(let text):
@@ -261,34 +289,19 @@ public actor CodexClient {
             return
         }
 
-        let envelope = try decoder.decode(IncomingEnvelope.self, from: data)
-
-        if let integerID = envelope.id?.integerValue, envelope.method == nil {
-            handleResponse(id: integerID, data: data, envelope: envelope)
+        switch routeIncomingData(data, decoder: decoder) {
+        case .response(let id, let responseData, let error):
+            handleResponse(id: id, data: responseData, error: error)
+        case .event(let event):
+            emit(event)
+        case .ignored:
             return
-        }
-
-        if let method = envelope.method, envelope.id == nil {
-            if let event = try? ServerNotificationEvent(from: data, decoder: decoder) {
-                emit(.notification(event))
-            } else {
-                emit(.unknownMessage(method: method, rawJSON: data))
-            }
-            return
-        }
-
-        if envelope.id != nil, let method = envelope.method {
-            if let request = try? AnyTypedServerRequest(from: data, decoder: decoder) {
-                emit(.serverRequest(request))
-            } else {
-                emit(.unknownMessage(method: method, rawJSON: data))
-            }
         }
     }
 
-    private func handleResponse(id: Int, data: Data, envelope: IncomingEnvelope) {
+    private func handleResponse(id: Int, data: Data, error: IncomingError?) {
         guard let continuation = pendingRequests.removeValue(forKey: id) else { return }
-        if let error = envelope.error {
+        if let error {
             continuation.resume(
                 throwing: CodexClientError.rpcError(code: error.code, message: error.message)
             )
@@ -313,7 +326,11 @@ public actor CodexClient {
     }
 
     private func shutdown(reason: String?) async {
+#if os(macOS)
         guard connected || session != nil || localProcess != nil else { return }
+#else
+        guard connected || session != nil else { return }
+#endif
 
         connected = false
 
@@ -336,15 +353,18 @@ public actor CodexClient {
         session = nil
         delegate = nil
 
+#if os(macOS)
         if let localProcess {
             self.localProcess = nil
             await localProcess.stop()
         }
+#endif
 
         emit(.connectionStateChanged(.disconnected))
         if let reason {
             emit(.disconnected(reason))
         }
+        eventContinuation.finish()
     }
 
     private func emit(_ event: CodexEvent) {
@@ -358,7 +378,7 @@ private struct IncomingEnvelope: Decodable {
     let error: IncomingError?
 }
 
-private struct IncomingError: Decodable {
+struct IncomingError: Decodable, Sendable {
     let code: Int
     let message: String
 }
@@ -382,6 +402,46 @@ private enum IncomingRequestID: Decodable {
         }
         return nil
     }
+}
+
+enum IncomingMessageDisposition: Sendable {
+    case response(id: Int, data: Data, error: IncomingError?)
+    case event(CodexEvent)
+    case ignored
+}
+
+func routeIncomingData(_ data: Data, decoder: JSONDecoder) -> IncomingMessageDisposition {
+    let envelope: IncomingEnvelope
+    do {
+        envelope = try decoder.decode(IncomingEnvelope.self, from: data)
+    } catch {
+        return .event(.invalidMessage(rawJSON: data, errorDescription: error.localizedDescription))
+    }
+
+    if let integerID = envelope.id?.integerValue, envelope.method == nil {
+        return .response(id: integerID, data: data, error: envelope.error)
+    }
+
+    if let method = envelope.method, envelope.id == nil {
+        if let event = try? ServerNotificationEvent(from: data, decoder: decoder) {
+            return .event(.notification(event))
+        }
+        return .event(.unknownMessage(method: method, rawJSON: data))
+    }
+
+    if envelope.id != nil, let method = envelope.method {
+        if let request = try? AnyTypedServerRequest(from: data, decoder: decoder) {
+            return .event(.serverRequest(request))
+        }
+        return .event(.unknownMessage(method: method, rawJSON: data))
+    }
+
+    return .event(
+        .invalidMessage(
+            rawJSON: data,
+            errorDescription: "unrecognized JSON-RPC message shape"
+        )
+    )
 }
 
 private struct AnyEncodableBox: Encodable {

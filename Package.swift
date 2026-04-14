@@ -6,6 +6,8 @@ let package = Package(
     name: "codex-app-server",
     platforms: [
         .macOS(.v13),
+        .iOS(.v16),
+        .visionOS(.v1),
     ],
     products: [
         .library(

@@ -139,7 +139,9 @@ def write_rpc_bridge(
         if response_type is None and is_empty_object_type(schema_definitions, response_type_name):
             response_type = "EmptyResponse"
         if response_type is None:
-            response_type = "EmptyResponse"
+            raise RuntimeError(
+                f"unable to resolve Swift response type for {wire_method!r}: {response_type_name}"
+            )
         lines.extend(
             [
                 f"    public enum {pascal(enum_case)}: CodexRPCMethod {{",
@@ -293,7 +295,9 @@ def write_server_requests(
         if response_type is None and is_empty_object_type(schema_definitions, response_type_name):
             response_type = "EmptyResponse"
         if response_type is None:
-            response_type = "EmptyResponse"
+            raise RuntimeError(
+                f"unable to resolve Swift response type for {wire_method!r}: {response_type_name}"
+            )
         entries.append((enum_case, pascal(enum_case), params_type, response_type))
 
     lines = [

@@ -1,6 +1,11 @@
 import Foundation
 import CodexAppServerProtocol
 
+#if os(macOS)
+import Darwin
+#endif
+
+#if os(macOS)
 internal final class LocalCodexAppServerProcess: @unchecked Sendable {
     let websocketURL: URL
 
@@ -25,13 +30,17 @@ internal final class LocalCodexAppServerProcess: @unchecked Sendable {
             policy: versionPolicy
         )
 
+        let port = findAvailableLoopbackPort()
+        let websocketURL = URL(string: "ws://127.0.0.1:\(port)")!
+        let readyURL = URL(string: "http://127.0.0.1:\(port)/readyz")!
+
         let process = Process()
         if executable.contains("/") {
             process.executableURL = URL(fileURLWithPath: executable)
-            process.arguments = ["app-server", "--listen", "ws://127.0.0.1:0"]
+            process.arguments = ["app-server", "--listen", websocketURL.absoluteString]
         } else {
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = [executable, "app-server", "--listen", "ws://127.0.0.1:0"]
+            process.arguments = [executable, "app-server", "--listen", websocketURL.absoluteString]
         }
         process.currentDirectoryURL = options.workingDirectory
 
@@ -49,23 +58,14 @@ internal final class LocalCodexAppServerProcess: @unchecked Sendable {
         let stderrPipe = Pipe()
         process.standardError = stderrPipe
 
-        let resolver = BoundURLResolver()
+        let stderrBuffer = LaunchLogBuffer()
         let stderrTask = Task.detached { [handle = stderrPipe.fileHandleForReading] in
             do {
                 for try await line in handle.bytes.lines {
-                    if let websocketURL = extractWebSocketURL(from: String(line)) {
-                        await resolver.resolve(with: websocketURL)
-                    }
+                    await stderrBuffer.append(String(line))
                 }
-                await resolver.failIfUnresolved(
-                    with: CodexClientError.processLaunchFailed(
-                        "codex app-server exited before reporting a websocket URL"
-                    )
-                )
             } catch {
-                await resolver.failIfUnresolved(
-                    with: CodexClientError.processLaunchFailed(error.localizedDescription)
-                )
+                await stderrBuffer.append(error.localizedDescription)
             }
         }
 
@@ -76,8 +76,17 @@ internal final class LocalCodexAppServerProcess: @unchecked Sendable {
             throw CodexClientError.processLaunchFailed(error.localizedDescription)
         }
 
-        let websocketURL = try await withTimeout(seconds: 10) {
-            try await resolver.value()
+        do {
+            try await waitUntilReady(
+                process: process,
+                readyURL: readyURL,
+                stderrBuffer: stderrBuffer,
+                timeoutSeconds: 10
+            )
+        } catch {
+            stderrTask.cancel()
+            terminate(process)
+            throw error
         }
 
         return LocalCodexAppServerProcess(
@@ -89,16 +98,13 @@ internal final class LocalCodexAppServerProcess: @unchecked Sendable {
 
     func stop() async {
         stderrDrainTask.cancel()
-        guard process.isRunning else { return }
-        process.terminate()
-        try? await Task.sleep(for: .seconds(3))
-        if process.isRunning {
-            kill(process.processIdentifier, SIGKILL)
-        }
+        terminate(process)
     }
 }
+#endif
 
 internal enum CodexVersionChecker {
+#if os(macOS)
     static func codexVersion(for executable: String) throws -> String {
         let process = Process()
         if executable.contains("/") {
@@ -128,6 +134,7 @@ internal enum CodexVersionChecker {
         }
         return version
     }
+#endif
 
     static func parseVersion(from string: String) -> String? {
         let pattern = #"\b\d+\.\d+\.\d+\b"#
@@ -143,40 +150,6 @@ internal enum CodexVersionChecker {
     static func validate(actual: String, expected: String, policy: VersionPolicy) throws {
         guard policy == .exact, actual != expected else { return }
         throw CodexClientError.versionMismatch(expected: expected, actual: actual)
-    }
-}
-
-private actor BoundURLResolver {
-    private var result: Result<URL, Error>?
-    private var continuations: [CheckedContinuation<URL, Error>] = []
-
-    func value() async throws -> URL {
-        if let result {
-            return try result.get()
-        }
-        return try await withCheckedThrowingContinuation { continuation in
-            continuations.append(continuation)
-        }
-    }
-
-    func resolve(with url: URL) {
-        guard result == nil else { return }
-        result = .success(url)
-        let continuations = continuations
-        self.continuations.removeAll()
-        for continuation in continuations {
-            continuation.resume(returning: url)
-        }
-    }
-
-    func failIfUnresolved(with error: Error) {
-        guard result == nil else { return }
-        result = .failure(error)
-        let continuations = continuations
-        self.continuations.removeAll()
-        for continuation in continuations {
-            continuation.resume(throwing: error)
-        }
     }
 }
 
@@ -198,35 +171,107 @@ private func withTimeout<T: Sendable>(
     }
 }
 
-private func extractWebSocketURL(from rawLine: String) -> URL? {
-    let line = stripANSIEscapeSequences(from: rawLine)
-    for token in line.split(whereSeparator: \.isWhitespace) {
-        guard let suffix = token.split(separator: "ws://", maxSplits: 1, omittingEmptySubsequences: false).last,
-              token.hasPrefix("ws://") else {
-            continue
-        }
-        if let url = URL(string: "ws://\(suffix)") {
-            return url
+#if os(macOS)
+private actor LaunchLogBuffer {
+    private let maxLines = 20
+    private var lines: [String] = []
+
+    func append(_ line: String) {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        lines.append(trimmed)
+        if lines.count > maxLines {
+            lines.removeFirst(lines.count - maxLines)
         }
     }
-    return nil
+
+    func failureDescription(fallback: String) -> String {
+        guard !lines.isEmpty else { return fallback }
+        return "\(fallback)\n\(lines.joined(separator: "\n"))"
+    }
 }
 
-private func stripANSIEscapeSequences(from line: String) -> String {
-    var stripped = ""
-    var iterator = line.makeIterator()
-    while let character = iterator.next() {
-        if character == "\u{001B}" {
-            if iterator.next() == "[" {
-                while let next = iterator.next() {
-                    if ("@"..."~").contains(String(next)) {
-                        break
-                    }
+private func waitUntilReady(
+    process: Process,
+    readyURL: URL,
+    stderrBuffer: LaunchLogBuffer,
+    timeoutSeconds: Double
+) async throws {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.timeoutIntervalForRequest = 1
+    let session = URLSession(configuration: configuration)
+    defer {
+        session.invalidateAndCancel()
+    }
+
+    do {
+        try await withTimeout(seconds: timeoutSeconds) {
+            while true {
+                if !process.isRunning {
+                    let message = await stderrBuffer.failureDescription(
+                        fallback: "codex app-server exited before becoming ready"
+                    )
+                    throw CodexClientError.processLaunchFailed(message)
                 }
-                continue
+
+                var request = URLRequest(url: readyURL)
+                request.timeoutInterval = 1
+                if let (_, response) = try? await session.data(for: request),
+                   let httpResponse = response as? HTTPURLResponse,
+                   httpResponse.statusCode == 200 {
+                    return
+                }
+
+                try await Task.sleep(for: .milliseconds(100))
             }
         }
-        stripped.append(character)
+    } catch let error as CodexClientError {
+        throw error
+    } catch {
+        let message = await stderrBuffer.failureDescription(
+            fallback: "timed out waiting for codex app-server readiness"
+        )
+        throw CodexClientError.processLaunchFailed(message)
     }
-    return stripped
 }
+
+private func terminate(_ process: Process) {
+    guard process.isRunning else { return }
+    process.terminate()
+    for _ in 0..<30 where process.isRunning {
+        Thread.sleep(forTimeInterval: 0.1)
+    }
+    if process.isRunning {
+        kill(process.processIdentifier, SIGKILL)
+    }
+}
+
+private func findAvailableLoopbackPort() -> Int {
+    let sock = socket(AF_INET, SOCK_STREAM, 0)
+    guard sock >= 0 else { return 4500 }
+    defer { close(sock) }
+
+    var addr = sockaddr_in()
+    addr.sin_family = sa_family_t(AF_INET)
+    addr.sin_port = 0
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+
+    var addrCopy = addr
+    let bindResult = withUnsafePointer(to: &addrCopy) { ptr in
+        ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
+            bind(sock, sockPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+        }
+    }
+    guard bindResult == 0 else { return 4500 }
+
+    var len = socklen_t(MemoryLayout<sockaddr_in>.size)
+    let getResult = withUnsafeMutablePointer(to: &addrCopy) { ptr in
+        ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
+            getsockname(sock, sockPtr, &len)
+        }
+    }
+    guard getResult == 0 else { return 4500 }
+
+    return Int(UInt16(bigEndian: addrCopy.sin_port))
+}
+#endif

@@ -6,6 +6,7 @@ public enum VersionPolicy: Sendable {
     case allowMismatch
 }
 
+#if os(macOS)
 public struct LocalServerOptions: Sendable {
     public var codexExecutable: String?
     public var workingDirectory: URL?
@@ -21,6 +22,7 @@ public struct LocalServerOptions: Sendable {
         self.environment = environment
     }
 }
+#endif
 
 public struct RemoteServerOptions: Sendable {
     public var url: URL
@@ -35,7 +37,9 @@ public struct RemoteServerOptions: Sendable {
 }
 
 public enum CodexConnection: Sendable {
+#if os(macOS)
     case localManaged(LocalServerOptions = .init())
+#endif
     case remote(RemoteServerOptions)
 }
 
@@ -67,6 +71,7 @@ public enum CodexEvent: Sendable {
     case notification(ServerNotificationEvent)
     case serverRequest(AnyTypedServerRequest)
     case disconnected(String)
+    case invalidMessage(rawJSON: Data, errorDescription: String)
     case unknownMessage(method: String, rawJSON: Data)
 }
 
