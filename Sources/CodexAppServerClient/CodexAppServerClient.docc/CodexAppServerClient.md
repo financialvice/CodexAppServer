@@ -43,6 +43,15 @@ you need.
 - <doc:DebuggingWithProcessLog>
 - <doc:HandlingServerRequests>
 
+### Convenience streams
+
+- ``CodexClient/streamTurn(input:threadId:)``
+- ``CodexClient/events(forThread:bufferSize:)``
+- ``CodexClient/notifications(of:forThread:bufferSize:)``
+- ``CodexClient/connectionStates(bufferSize:)``
+- ``CodexClient/serverRequests(of:bufferSize:)``
+- ``CodexClient/processLogs(bufferSize:)``
+
 ### Events & Errors
 
 - ``CodexEvent``

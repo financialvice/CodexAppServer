@@ -149,6 +149,33 @@ Example:
 - package `0.120.0`
 - generated from `codex 0.120.0`
 
+### When the Swift binding is republished without a Codex bump
+
+Swift bindings sometimes need to evolve (new convenience APIs, doc fixes,
+footgun fixes) without an upstream `openai/codex` release. We preserve the
+1:1 version mapping by **force-moving the codex version tag** rather than
+issuing a separate Swift-only patch number.
+
+The cost: SwiftPM caches a per-version SHA in
+`~/Library/org.swift.swiftpm/security/fingerprints/` on first resolve. If you
+already resolved this package at the prior tag SHA, your next resolve will
+fail with:
+
+```
+error: Revision <new_sha> for package <pkg> at version 0.120.0 does not match
+previously recorded value <old_sha>
+```
+
+Recovery is one command:
+
+```bash
+rm ~/Library/org.swift.swiftpm/security/fingerprints/codex-app-server-client-*.json
+swift package update
+```
+
+For CI, you can pass `--resolver-fingerprint-checking warn` to any
+`swift package` invocation to downgrade the error to a warning.
+
 ## CI And Release
 
 Two GitHub Actions workflows are included:

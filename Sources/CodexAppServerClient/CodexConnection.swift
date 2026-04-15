@@ -163,6 +163,9 @@ public enum CodexClientError: Error, LocalizedError, Sendable {
     case unsupportedBearerTransport(URL)
     case invalidRemoteURL(String)
     case notConnected
+    /// The websocket failed to open before the system-default timeout. `url`
+    /// is the address that was being dialled.
+    case connectTimeout(URL)
     /// The connection closed before the pending RPC received a response.
     case connectionClosed(DisconnectReason)
     /// The server returned a JSON-RPC error. See ``isThreadNotFound`` and
@@ -189,6 +192,8 @@ public enum CodexClientError: Error, LocalizedError, Sendable {
             "Invalid remote URL: \(value)"
         case .notConnected:
             "WebSocket is not connected"
+        case .connectTimeout(let url):
+            "Timed out opening websocket to \(url.absoluteString)"
         case .connectionClosed(let reason):
             "Connection closed: \(reason.description)"
         case .rpcError(_, let message):

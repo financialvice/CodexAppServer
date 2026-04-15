@@ -18,6 +18,12 @@ binding exposes.
 
 ## Topics
 
+### Catalog Articles
+
+- <doc:RPCMethodsCatalog>
+- <doc:ServerNotificationsCatalog>
+- <doc:ServerRequestsCatalog>
+
 ### Method Namespaces
 
 - ``RPC``

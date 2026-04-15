@@ -58,6 +58,8 @@ python3 "${SCRIPT_DIR}/postprocess-swift.py" \
 
 rm "${MODELS_OUT}.tmp"
 
+DOCC_OUT_DIR="${PROJECT_DIR}/Sources/CodexAppServerProtocol/CodexAppServerProtocol.docc/Generated"
+
 python3 "${SCRIPT_DIR}/generate-swift-bridge.py" \
   --swift "${MODELS_OUT}" \
   --client-request-ts "${TS_DIR}/ClientRequest.ts" \
@@ -65,6 +67,7 @@ python3 "${SCRIPT_DIR}/generate-swift-bridge.py" \
   --server-request-ts "${TS_DIR}/ServerRequest.ts" \
   --schema "${SCHEMA_DIR}/_combined.json" \
   --out-dir "${GENERATED_DIR}" \
+  --docc-out-dir "${DOCC_OUT_DIR}" \
   --codex-version "${PINNED_VERSION}"
 
 rm -rf "${SCHEMA_DIR}" "${TS_DIR}"

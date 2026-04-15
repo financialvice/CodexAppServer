@@ -44,16 +44,39 @@ public actor CodexClient {
     ///
     /// Each call returns a fresh `AsyncStream` — multiple consumers receive independent copies
     /// of every event. The stream uses a bounded buffer; when a slow consumer falls behind,
-    /// excess events are dropped silently and a ``CodexEvent/lagged(skipped:)`` marker is
-    /// inserted to signal the gap. Drain the stream promptly to avoid lag.
+    /// excess events are dropped and a ``CodexEvent/lagged(skipped:)`` marker is inserted to
+    /// signal the gap. Drain the stream promptly to avoid lag.
     ///
     /// Events emitted before subscription are not retained. Subscribe prior to the work that
     /// produces the events you want to observe.
     ///
-    /// - Parameter bufferSize: Maximum per-consumer buffered events. Defaults to 1024.
+    /// > Important: When the underlying connection drops the stream finishes silently — the
+    /// > `for await` loop simply exits without an error. Pair with
+    /// > ``connectionStates(bufferSize:)`` if you need to distinguish a clean shutdown
+    /// > from an unexpected disconnect.
+    ///
+    /// - Parameter bufferSize: Maximum per-consumer buffered events. Defaults to 1024. Uses
+    ///   the `.bufferingOldest` policy: when full, oldest events are kept and newest are
+    ///   dropped. Use ``events(bufferingPolicy:)`` to choose `.bufferingNewest` (drop oldest)
+    ///   or `.unbounded`.
     public func events(bufferSize: Int = 1024) -> AsyncStream<CodexEvent> {
+        events(bufferingPolicy: .bufferingOldest(bufferSize))
+    }
+
+    /// Subscribe to the client event stream with an explicit buffering policy.
+    ///
+    /// Use `.bufferingNewest(N)` to keep the most recent events and discard older ones — handy
+    /// for inspector / dev panels that care about *current* state more than completeness. Use
+    /// `.unbounded` only when you can guarantee draining; the buffer grows without limit
+    /// otherwise.
+    ///
+    /// > Important: Same lifecycle as ``events(bufferSize:)`` — finishes silently on
+    /// > disconnect.
+    public func events(
+        bufferingPolicy: AsyncStream<CodexEvent>.Continuation.BufferingPolicy
+    ) -> AsyncStream<CodexEvent> {
         let id = UUID()
-        let stream = AsyncStream<CodexEvent>(bufferingPolicy: .bufferingOldest(bufferSize)) { continuation in
+        let stream = AsyncStream<CodexEvent>(bufferingPolicy: bufferingPolicy) { continuation in
             if streamIsFinished {
                 continuation.finish()
                 return
@@ -74,8 +97,8 @@ public actor CodexClient {
     /// one notification type is of interest — avoids switching on the whole `CodexEvent` enum.
     ///
     /// ```swift
-    /// for await delta in await client.notifications(of: ServerNotifications.AgentMessageDelta.self) {
-    ///     print(delta.content)
+    /// for await delta in await client.notifications(of: ServerNotifications.ItemAgentMessageDelta.self) {
+    ///     print(delta.delta)
     /// }
     /// ```
     public func notifications<Method: CodexServerNotificationMethod>(
@@ -125,9 +148,16 @@ public actor CodexClient {
     /// replies (or the connection closes). Cancellation of the calling task cancels the pending
     /// request.
     ///
+    /// > Important: For RPCs whose work continues server-side after the response (notably
+    /// > `RPC.TurnStart`, which returns a `turnId` after a quick handshake and then streams
+    /// > deltas via subsequent notifications), task cancellation only affects the synchronous
+    /// > handshake — *not* the server-side work. Use `RPC.TurnInterrupt` to stop a
+    /// > running turn, or use ``streamTurn(input:threadId:)`` which wraps the full lifecycle.
+    ///
     /// - Throws: `CodexClientError.rpcError` if the server returned a JSON-RPC error,
     ///   `CodexClientError.connectionClosed` if the connection drops mid-flight,
-    ///   `CancellationError` if the calling task is cancelled.
+    ///   `CodexClientError.threadNotFound` when the message matches the codex
+    ///   thread-not-found convention, `CancellationError` if the calling task is cancelled.
     public func call<Method: CodexRPCMethod>(
         _ method: Method.Type,
         params: Method.Params
@@ -290,7 +320,7 @@ public actor CodexClient {
             self.delegate = nil
             self.session = nil
             self.webSocketTask = nil
-            throw error
+            throw mapOpenFailure(error, url: url)
         }
 
         connected = true
@@ -383,6 +413,27 @@ public actor CodexClient {
             return .networkError(URLError(URLError.Code(rawValue: nsError.code)))
         }
         return .other(error.localizedDescription)
+    }
+
+    private func mapOpenFailure(_ error: Error, url: URL) -> Error {
+        if let codexError = error as? CodexClientError {
+            return codexError
+        }
+        if let urlError = error as? URLError {
+            if urlError.code == .timedOut {
+                return CodexClientError.connectTimeout(url)
+            }
+            return CodexClientError.connectionClosed(.networkError(urlError))
+        }
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            let urlError = URLError(URLError.Code(rawValue: nsError.code))
+            if urlError.code == .timedOut {
+                return CodexClientError.connectTimeout(url)
+            }
+            return CodexClientError.connectionClosed(.networkError(urlError))
+        }
+        return CodexClientError.connectionClosed(.other(error.localizedDescription))
     }
 
     private func handle(message: URLSessionWebSocketTask.Message) async {

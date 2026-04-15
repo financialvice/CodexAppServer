@@ -553,6 +553,46 @@ def write_metadata(out_path: Path, codex_version: str) -> None:
     )
 
 
+def category_for_wire_method(wire_method: str) -> str:
+    """Group wire methods by their first path segment for catalog organisation."""
+    if "/" in wire_method:
+        return wire_method.split("/", 1)[0]
+    return "core"
+
+
+def write_catalog_article(
+    out_path: Path,
+    title: str,
+    intro: str,
+    namespace: str,
+    entries: list[tuple[str, str]],  # (base_name, wire_method)
+) -> None:
+    """Emit a DocC article that groups all generated symbols of a kind by category."""
+    by_category: dict[str, list[tuple[str, str]]] = {}
+    for base_name, wire_method in sorted(entries, key=lambda e: e[1]):
+        by_category.setdefault(category_for_wire_method(wire_method), []).append(
+            (base_name, wire_method)
+        )
+
+    lines: list[str] = [
+        f"# {title}",
+        "",
+        intro,
+        "",
+        "## Topics",
+        "",
+    ]
+    for category in sorted(by_category):
+        category_label = category if category != "core" else "Core"
+        lines.append(f"### {category_label}")
+        lines.append("")
+        for base_name, _wire_method in by_category[category]:
+            lines.append(f"- ``{namespace}/{base_name}``")
+        lines.append("")
+
+    out_path.write_text("\n".join(lines))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--swift", required=True, type=Path)
@@ -561,8 +601,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--server-request-ts", required=True, type=Path)
     parser.add_argument("--schema", required=True, type=Path)
     parser.add_argument("--out-dir", required=True, type=Path)
+    parser.add_argument("--docc-out-dir", required=True, type=Path,
+                        help="Directory to write generated DocC catalog articles into.")
     parser.add_argument("--codex-version", required=True)
     return parser
+
+
+def collect_methods_for_catalog(swift_text: str, enum_name: str) -> list[tuple[str, str]]:
+    """Return [(PascalCaseBaseName, wireMethod), ...] for catalog generation."""
+    return [(pascal(case), wire) for case, wire in collect_method_cases(swift_text, enum_name)]
 
 
 def main() -> int:
@@ -575,6 +622,7 @@ def main() -> int:
     schema_definitions = load_schema_definitions(args.schema)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
+    args.docc_out_dir.mkdir(parents=True, exist_ok=True)
 
     write_rpc_bridge(
         swift_text,
@@ -595,6 +643,41 @@ def main() -> int:
         args.out_dir / "CodexServerRequestsGenerated.swift",
     )
     write_metadata(args.out_dir / "CodexBindingMetadataGenerated.swift", args.codex_version)
+
+    # Auto-generated DocC catalog articles indexing every method by category.
+    write_catalog_article(
+        args.docc_out_dir / "RPCMethodsCatalog.md",
+        title="RPC Methods Catalog",
+        intro=(
+            "Every client-to-server RPC method exposed by this Codex binding, grouped by "
+            "wire-method prefix. Each entry links to the typed marker enum used with "
+            "`CodexClient.call(_:params:)`."
+        ),
+        namespace="RPC",
+        entries=collect_methods_for_catalog(swift_text, "ClientRequestMethod"),
+    )
+    write_catalog_article(
+        args.docc_out_dir / "ServerNotificationsCatalog.md",
+        title="Server Notifications Catalog",
+        intro=(
+            "Every server-to-client notification this Codex binding can decode, grouped by "
+            "wire-method prefix. Each entry links to the typed namespace member used with "
+            "`CodexClient.notifications(of:)`."
+        ),
+        namespace="ServerNotifications",
+        entries=collect_methods_for_catalog(swift_text, "NotificationMethod"),
+    )
+    write_catalog_article(
+        args.docc_out_dir / "ServerRequestsCatalog.md",
+        title="Server Requests Catalog",
+        intro=(
+            "Every server-to-client request this Codex binding can decode, grouped by "
+            "wire-method prefix. Each entry links to the typed namespace member used with "
+            "`CodexClient.serverRequests(of:)`."
+        ),
+        namespace="ServerRequests",
+        entries=collect_methods_for_catalog(swift_text, "ServerRequestMethod"),
+    )
     return 0
 
 
