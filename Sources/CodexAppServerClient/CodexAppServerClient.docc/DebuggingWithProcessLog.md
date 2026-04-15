@@ -87,6 +87,21 @@ Task {
 
 Each call to `events()` returns an independent `AsyncStream`. Both consumers receive every event; the process log consumer will not interfere with your main loop's buffer.
 
+## Shorthand: `processLogs()`
+
+If all you want is the stderr stream with no other event handling, skip the `events()`
+switch entirely and use the typed accessor ``CodexClient/processLogs(bufferSize:)``:
+
+```swift
+Task {
+    for await line in await client.processLogs() {
+        logModel.append(line)
+    }
+}
+```
+
+Same multicast guarantees, same macOS/`.localManaged`-only constraint, less boilerplate.
+
 ## Gotcha: `.processLog` lines arrive asynchronously
 
 Lines are forwarded as they are read from the pipe — they may arrive slightly after the event that triggered them (e.g. a tool-call result notification). Don't rely on log line ordering relative to notifications for anything load-bearing; treat them as diagnostic context only.

@@ -43,14 +43,22 @@ you need.
 - <doc:DebuggingWithProcessLog>
 - <doc:HandlingServerRequests>
 
+### Per-thread routing
+
+- <doc:RoutingMultipleThreads>
+- ``CodexClient/events(forThread:bufferSize:)``
+- ``CodexClient/notifications(of:forThread:bufferSize:)``
+
 ### Convenience streams
 
 - ``CodexClient/streamTurn(input:threadId:)``
-- ``CodexClient/events(forThread:bufferSize:)``
-- ``CodexClient/notifications(of:forThread:bufferSize:)``
+- ``TurnStream``
 - ``CodexClient/connectionStates(bufferSize:)``
+- ``CodexClient/currentConnectionState``
 - ``CodexClient/serverRequests(of:bufferSize:)``
 - ``CodexClient/processLogs(bufferSize:)``
+- ``CodexClient/droppedEventCounts()``
+- ``CodexClient/respond(to:intent:)``
 
 ### Events & Errors
 

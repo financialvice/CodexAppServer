@@ -74,3 +74,40 @@ for await delta in await client.notifications(of: ServerNotifications.ItemAgentM
     print(delta.delta)
 }
 ```
+
+## Stream a whole turn in one call
+
+For the 90% case — send a prompt, render tokens as they arrive, know when the turn is done —
+use ``CodexClient/streamTurn(input:threadId:)``. It opens the subscription *before*
+issuing `RPC.TurnStart` so no deltas are missed, filters by the captured `turnId`, and
+finishes cleanly on `TurnCompleted`:
+
+```swift
+let turn = try await client.streamTurn(
+    input: [.text("Explain recursion briefly.")],
+    threadId: thread.thread.id
+)
+for await delta in turn.deltas {
+    print(delta.delta, terminator: "")
+}
+```
+
+The returned ``TurnStream`` also exposes ``TurnStream/turnId`` so you can call
+`RPC.TurnInterrupt` mid-stream — `Task.cancel()` alone does not stop the server.
+
+## Packaging note: `@main` and `main.swift`
+
+When you scaffold a Swift Package Manager executable target that uses this library,
+Swift forbids the `@main` attribute in a file literally named `main.swift` — SPM already
+treats that file as the implicit entry point. Name the file anything else (`App.swift`
+is conventional) and put `@main struct App: App` there.
+
+```swift
+// Sources/MyApp/App.swift    ← NOT main.swift
+@main struct MyApp: App {
+    var body: some Scene { WindowGroup { ContentView() } }
+}
+```
+
+The collision produces the cryptic `"'main' attribute cannot be used in a module that
+contains top-level code"` error. This is a SwiftPM rule, not a library rule.

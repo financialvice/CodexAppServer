@@ -52,6 +52,7 @@ binding exposes.
 
 - ``ApprovalIntent``
 - ``ApprovalResponse``
+- ``AnyApprovalRequest``
 
 ### Empty Payloads
 

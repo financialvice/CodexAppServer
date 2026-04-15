@@ -43,20 +43,84 @@ public enum ApprovalIntent: Sendable, Equatable, CaseIterable {
 ///
 /// Every conforming response type provides an ``init(intent:)`` convenience
 /// that maps the canonical ``ApprovalIntent`` into the correct underlying
-/// decision enum. Use this protocol to write approval UI that doesn't care
-/// which specific request arrived.
+/// decision enum.
 ///
-/// ```swift
-/// func handle<Response: ApprovalResponse>(_: Response.Type) async throws {
-///     try await client.respond(to: request, result: Response(intent: userChoice))
-/// }
-/// ```
+/// For generic dispatch across all four approval requests in one call site, prefer
+/// ``AnyApprovalRequest`` combined with the client's
+/// `respond(to:intent:)` helper — it avoids writing one branch per approval method
+/// in UI code.
 public protocol ApprovalResponse: Sendable {
     /// Build a response for the given user intent.
     init(intent: ApprovalIntent)
 }
 
-// MARK: - ReviewDecision-shaped responses
+/// Compile-time-safe subset of ``AnyTypedServerRequest`` containing only the
+/// approval-shaped requests (those answered with an ``ApprovalIntent``).
+///
+/// Obtain one from ``AnyTypedServerRequest/asApprovalRequest`` and answer it
+/// with the client's `respond(to:intent:)` helper. UI code that treats every
+/// approval uniformly needs a single call site instead of one branch per
+/// approval method.
+public enum AnyApprovalRequest: Sendable {
+    case applyPatchApproval(TypedServerRequest<ServerRequests.ApplyPatchApproval>)
+    case execCommandApproval(TypedServerRequest<ServerRequests.ExecCommandApproval>)
+    case itemCommandExecutionRequestApproval(TypedServerRequest<ServerRequests.ItemCommandExecutionRequestApproval>)
+    case itemFileChangeRequestApproval(TypedServerRequest<ServerRequests.ItemFileChangeRequestApproval>)
+
+    /// JSON-RPC request identifier this approval is answering.
+    public var id: RequestId {
+        switch self {
+        case .applyPatchApproval(let request): return request.id
+        case .execCommandApproval(let request): return request.id
+        case .itemCommandExecutionRequestApproval(let request): return request.id
+        case .itemFileChangeRequestApproval(let request): return request.id
+        }
+    }
+
+    /// Wire method that originated this approval.
+    public var method: ServerRequestMethod {
+        switch self {
+        case .applyPatchApproval: return .applyPatchApproval
+        case .execCommandApproval: return .execCommandApproval
+        case .itemCommandExecutionRequestApproval: return .itemCommandExecutionRequestApproval
+        case .itemFileChangeRequestApproval: return .itemFileChangeRequestApproval
+        }
+    }
+}
+
+extension AnyTypedServerRequest {
+    /// Narrow to an ``AnyApprovalRequest`` if this is one of the four approval-shaped
+    /// server requests. Returns `nil` for non-approval requests
+    /// (`ItemToolCall`, `ItemToolRequestUserInput`, `PermissionsRequestApproval`,
+    /// `McpServerElicitationRequest`, `AccountChatgptAuthTokensRefresh`).
+    public var asApprovalRequest: AnyApprovalRequest? {
+        switch self {
+        case .applyPatchApproval(let request): return .applyPatchApproval(request)
+        case .execCommandApproval(let request): return .execCommandApproval(request)
+        case .itemCommandExecutionRequestApproval(let request): return .itemCommandExecutionRequestApproval(request)
+        case .itemFileChangeRequestApproval(let request): return .itemFileChangeRequestApproval(request)
+        case .accountChatgptAuthTokensRefresh,
+             .itemPermissionsRequestApproval,
+             .itemToolCall,
+             .itemToolRequestUserInput,
+             .mcpServerElicitationRequest:
+            return nil
+        }
+    }
+}
+
+// MARK: - Decision-enum mappings (curated vocabulary, hand-maintained)
+
+// These map the canonical ``ApprovalIntent`` onto the wire-format decision
+// enums. They live here (not in the generated output) because they encode
+// the intent→wire-value mapping that is semantic, not mechanical — a change
+// in codex's wire vocabulary would require an informed update, not a
+// pure regeneration.
+//
+// The per-response-type `init(intent:)` extensions that consume these
+// decision enums are generated from the schema in
+// `Generated/ApprovalMappingsGenerated.swift` so new approval-shaped response
+// types introduced by upstream codex are covered automatically.
 
 extension ReviewDecision {
     /// Construct a ``ReviewDecision`` for the given canonical ``ApprovalIntent``.
@@ -73,20 +137,6 @@ extension ReviewDecision {
         }
     }
 }
-
-extension ApplyPatchApprovalResponse: ApprovalResponse {
-    public init(intent: ApprovalIntent) {
-        self.init(decision: ReviewDecision(intent: intent))
-    }
-}
-
-extension ExecCommandApprovalResponse: ApprovalResponse {
-    public init(intent: ApprovalIntent) {
-        self.init(decision: ReviewDecision(intent: intent))
-    }
-}
-
-// MARK: - FileChangeApprovalDecision-shaped responses
 
 extension FileChangeApprovalDecision {
     /// Construct a ``FileChangeApprovalDecision`` for the given canonical ``ApprovalIntent``.
@@ -108,17 +158,5 @@ extension CommandExecutionApprovalDecision {
     /// Construct a ``CommandExecutionApprovalDecision`` for the given canonical ``ApprovalIntent``.
     public init(intent: ApprovalIntent) {
         self = .enumeration(FileChangeApprovalDecision(intent: intent))
-    }
-}
-
-extension CommandExecutionRequestApprovalResponse: ApprovalResponse {
-    public init(intent: ApprovalIntent) {
-        self.init(decision: CommandExecutionApprovalDecision(intent: intent))
-    }
-}
-
-extension FileChangeRequestApprovalResponse: ApprovalResponse {
-    public init(intent: ApprovalIntent) {
-        self.init(decision: FileChangeApprovalDecision(intent: intent))
     }
 }

@@ -28,12 +28,12 @@ struct CodexAppServerExample {
             }
         }
 
-        let stream = try await client.streamTurn(
+        let turn = try await client.streamTurn(
             input: [.text("Say hello in one short sentence.")],
             threadId: thread.thread.id
         )
 
-        for await delta in stream {
+        for await delta in turn.deltas {
             print(delta.delta, terminator: "")
         }
         print()

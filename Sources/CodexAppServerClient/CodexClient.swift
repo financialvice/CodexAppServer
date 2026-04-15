@@ -20,6 +20,14 @@ public actor CodexClient {
     /// The server information returned by the `initialize` handshake, or `nil` before connect.
     public private(set) var serverInfo: InitializeResponse?
 
+    /// The most recent connection lifecycle state observed by this client.
+    ///
+    /// `nil` before the first connection attempt; otherwise always reflects the last
+    /// state change emitted on the event stream. Readers that mount after a disconnect
+    /// can read ``currentConnectionState`` directly instead of racing to observe the
+    /// transient event — handy for late-binding UI.
+    public private(set) var currentConnectionState: ConnectionState?
+
     private let encoder = newJSONEncoder()
     private let decoder = newJSONDecoder()
 
@@ -104,7 +112,7 @@ public actor CodexClient {
     public func notifications<Method: CodexServerNotificationMethod>(
         of method: Method.Type,
         bufferSize: Int = 1024
-    ) async -> AsyncStream<Method.Params> where Method.Params: Sendable {
+    ) -> AsyncStream<Method.Params> where Method.Params: Sendable {
         let base = events(bufferSize: bufferSize)
         return AsyncStream { continuation in
             let task = Task {
@@ -523,6 +531,9 @@ public actor CodexClient {
     }
 
     private func emit(_ event: CodexEvent) {
+        if case .connectionStateChanged(let state) = event {
+            currentConnectionState = state
+        }
         for (id, continuation) in subscribers {
             let pendingLag = subscriberDropCounts[id, default: 0]
             if pendingLag > 0 {

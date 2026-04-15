@@ -52,7 +52,7 @@ extension CodexClient {
         of method: Method.Type,
         forThread threadId: String,
         bufferSize: Int = 1024
-    ) async -> AsyncStream<Method.Params> where Method.Params: Sendable {
+    ) -> AsyncStream<Method.Params> where Method.Params: Sendable {
         let base = events(forThread: threadId, bufferSize: bufferSize)
         return AsyncStream { continuation in
             let task = Task {
@@ -77,19 +77,51 @@ extension CodexClient {
     /// Stream of connection lifecycle transitions.
     ///
     /// Useful when you want to drive a "Connected / Reconnecting / Disconnected" UI badge
-    /// without exhaustively switching on the full ``CodexEvent`` enum. The stream emits the
-    /// initial state on subscription is *not* guaranteed; subscribe before connecting if
-    /// you need the full lifecycle.
+    /// without exhaustively switching on the full ``CodexEvent`` enum.
+    ///
+    /// If the client already has a ``currentConnectionState``, the stream yields it
+    /// immediately on subscription so late-binding consumers don't need a separate
+    /// one-shot read. Subsequent state transitions are delivered as they occur.
     public func connectionStates(
         bufferSize: Int = 16
     ) -> AsyncStream<ConnectionState> {
         let base = events(bufferingPolicy: .bufferingNewest(bufferSize))
+        let snapshot = currentConnectionState
         return AsyncStream { continuation in
+            if let snapshot {
+                continuation.yield(snapshot)
+            }
             let task = Task {
                 for await event in base {
                     if Task.isCancelled { break }
                     if case .connectionStateChanged(let state) = event {
                         continuation.yield(state)
+                    }
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// Stream of drop counts from ``CodexEvent/lagged(skipped:)`` markers.
+    ///
+    /// A consumer that only uses typed streams (``notifications(of:bufferSize:)``,
+    /// ``serverRequests(of:bufferSize:)``) will otherwise have no way to observe buffer
+    /// overflow, since `.lagged(skipped:)` is a `CodexEvent` case and does not surface
+    /// through the typed filters. Subscribing here gives a pure "I just lost N events"
+    /// signal suitable for a health-indicator UI or telemetry.
+    ///
+    /// The returned stream itself uses `.unbounded` buffering so the drop meter cannot
+    /// itself drop samples.
+    public func droppedEventCounts() -> AsyncStream<Int> {
+        let base = events()
+        return AsyncStream(bufferingPolicy: .unbounded) { continuation in
+            let task = Task {
+                for await event in base {
+                    if Task.isCancelled { break }
+                    if case .lagged(let skipped) = event {
+                        continuation.yield(skipped)
                     }
                 }
                 continuation.finish()
@@ -156,25 +188,84 @@ extension CodexClient {
     #endif
 }
 
-// MARK: - Turn streaming convenience
+// MARK: - Approval dispatch
 
 extension CodexClient {
-    /// Start a turn and stream its agent message deltas in one call.
+    /// Answer any approval-shaped server request with a single canonical intent.
+    ///
+    /// Pattern-matches the `AnyApprovalRequest` case and dispatches the user's intent
+    /// into the correct typed response via `ApprovalResponse.init(intent:)`. Callers
+    /// get one line of approval UI dispatch instead of one branch per method.
+    ///
+    /// ```swift
+    /// for await event in await client.events() {
+    ///     if case .serverRequest(let request) = event,
+    ///        let approval = request.asApprovalRequest {
+    ///         try await client.respond(to: approval, intent: userChoice)
+    ///     }
+    /// }
+    /// ```
+    public func respond(to request: AnyApprovalRequest, intent: ApprovalIntent) async throws {
+        switch request {
+        case .applyPatchApproval(let typed):
+            try await respond(to: typed, result: ApplyPatchApprovalResponse(intent: intent))
+        case .execCommandApproval(let typed):
+            try await respond(to: typed, result: ExecCommandApprovalResponse(intent: intent))
+        case .itemCommandExecutionRequestApproval(let typed):
+            try await respond(to: typed, result: CommandExecutionRequestApprovalResponse(intent: intent))
+        case .itemFileChangeRequestApproval(let typed):
+            try await respond(to: typed, result: FileChangeRequestApprovalResponse(intent: intent))
+        }
+    }
+}
+
+// MARK: - Turn streaming convenience
+
+/// A handle to an in-flight turn and its streaming agent message deltas.
+///
+/// Returned by ``CodexClient/streamTurn(input:threadId:)``. Holds the captured
+/// `turnId` so callers can call `RPC.TurnInterrupt` mid-stream, and exposes
+/// `deltas` as the usual token-streaming `AsyncStream`.
+///
+/// The `deltas` stream finishes when:
+/// - the matching `ServerNotifications.TurnCompleted` arrives (normal completion), or
+/// - the connection drops (no error is thrown — this matches the library-wide
+///   convention; observe `CodexClient.connectionStates()` or
+///   `CodexClient.currentConnectionState` if you need to distinguish these cases), or
+/// - the consuming task is cancelled.
+public struct TurnStream: Sendable {
+    /// Server-assigned identifier for this turn. Pass with `threadId` to
+    /// `RPC.TurnInterrupt` if you need to stop generation before `TurnCompleted`.
+    public let turnId: String
+    /// Thread this turn is running on.
+    public let threadId: String
+    /// Stream of agent message deltas for this turn only. Finishes silently on
+    /// connection loss — see the type-level docs.
+    public let deltas: AsyncStream<AgentMessageDeltaNotification>
+}
+
+extension CodexClient {
+    /// Start a turn and return a handle exposing its `turnId` plus a stream of its deltas.
     ///
     /// Wraps the four-step "subscribe before TurnStart, capture turnId, filter deltas by
     /// turnId, finish on TurnCompleted" recipe that every chat-style consumer reinvents.
     ///
     /// The events stream is opened *before* the `RPC.TurnStart` call so no deltas can
     /// arrive in the gap between the server starting the turn and the client knowing the
-    /// `turnId`. The returned stream finishes when the matching `ServerNotifications.TurnCompleted`
-    /// arrives, the connection drops, or the consuming task is cancelled.
+    /// `turnId`.
     ///
-    /// To stop a turn that is still streaming, cancel the consuming task **and** call
-    /// `RPC.TurnInterrupt` with the `(threadId, turnId)` you can recover from the first
-    /// yielded delta — `Task.cancel()` alone does not stop the server.
+    /// The returned ``TurnStream/deltas`` stream finishes cleanly on `TurnCompleted`.
+    /// If the connection drops mid-turn the stream also finishes silently — pair with
+    /// ``connectionStates(bufferSize:)`` or ``currentConnectionState`` if you need to
+    /// distinguish disconnect from normal completion.
+    ///
+    /// To stop a turn that is still streaming, call `RPC.TurnInterrupt` with
+    /// ``TurnStream/threadId`` and ``TurnStream/turnId`` — `Task.cancel()` alone does
+    /// not stop the server.
     ///
     /// ```swift
-    /// for try await delta in client.streamTurn(input: [.text("hi")], threadId: thread.id) {
+    /// let turn = try await client.streamTurn(input: [.text("hi")], threadId: thread.id)
+    /// for await delta in turn.deltas {
     ///     bubble.text += delta.delta
     /// }
     /// ```
@@ -183,7 +274,7 @@ extension CodexClient {
     public func streamTurn(
         input: [UserInput],
         threadId: String
-    ) async throws -> AsyncStream<AgentMessageDeltaNotification> {
+    ) async throws -> TurnStream {
         let baseEvents = events()
         let response = try await call(
             RPC.TurnStart.self,
@@ -191,7 +282,7 @@ extension CodexClient {
         )
         let turnId = response.turn.id
 
-        return AsyncStream { continuation in
+        let deltas = AsyncStream<AgentMessageDeltaNotification> { continuation in
             let task = Task {
                 for await event in baseEvents {
                     if Task.isCancelled { break }
@@ -210,6 +301,8 @@ extension CodexClient {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+
+        return TurnStream(turnId: turnId, threadId: threadId, deltas: deltas)
     }
 }
 
