@@ -35,7 +35,7 @@ Those are omitted on purpose to keep the package small and predictable.
 
 ## Requirements
 
-- Swift 6.3+
+- Swift 6.1+
 - Apple platforms
 - `codex` installed locally for managed local launch on macOS
 - exact match between the app-server Codex version and the generated binding version when using exact version policy
