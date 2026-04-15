@@ -1,11 +1,25 @@
 import Foundation
-import CodexAppServerProtocol
+import os
+@_exported import CodexAppServerProtocol
 
+let codexClientLogger = Logger(subsystem: "xyz.dubdubdub.codex-app-server-client", category: "client")
+
+/// A generic client for the codex app-server JSON-RPC protocol.
+///
+/// `CodexClient` connects to a locally launched or remote codex app-server, performs the
+/// `initialize` handshake, and exposes typed request/response, notification, and server-request APIs.
+/// Create one with ``connect(_:options:)`` and observe activity via ``events(bufferSize:)``.
+///
+/// The client is an `actor`: all state mutations are serialised. Multiple consumers may each call
+/// ``events(bufferSize:)`` to receive their own multicast event stream.
+///
+/// Call ``disconnect()`` when finished to tear down the websocket and (for local launches) the
+/// child process. Forgetting to disconnect leaks the local process until the Swift task holding
+/// the client is deallocated.
 public actor CodexClient {
-    public nonisolated let events: AsyncStream<CodexEvent>
+    /// The server information returned by the `initialize` handshake, or `nil` before connect.
     public private(set) var serverInfo: InitializeResponse?
 
-    private let eventContinuation: AsyncStream<CodexEvent>.Continuation
     private let encoder = newJSONEncoder()
     private let decoder = newJSONDecoder()
 
@@ -20,28 +34,82 @@ public actor CodexClient {
     private var pendingRequests: [Int: CheckedContinuation<Data, Error>] = [:]
     private var connected = false
 
-    public init() {
-        var continuation: AsyncStream<CodexEvent>.Continuation?
-        self.events = AsyncStream { streamContinuation in
-            continuation = streamContinuation
-        }
-        self.eventContinuation = continuation!
-    }
+    private var subscribers: [UUID: AsyncStream<CodexEvent>.Continuation] = [:]
+    private var subscriberDropCounts: [UUID: Int] = [:]
+    private var streamIsFinished = false
 
-    deinit {
-        listenTask?.cancel()
-        webSocketTask?.cancel(with: .goingAway, reason: nil)
-        session?.invalidateAndCancel()
-#if os(macOS)
-        if let localProcess {
-            Task {
-                await localProcess.stop()
+    public init() {}
+
+    /// Subscribe to the client event stream.
+    ///
+    /// Each call returns a fresh `AsyncStream` — multiple consumers receive independent copies
+    /// of every event. The stream uses a bounded buffer; when a slow consumer falls behind,
+    /// excess events are dropped silently and a ``CodexEvent/lagged(skipped:)`` marker is
+    /// inserted to signal the gap. Drain the stream promptly to avoid lag.
+    ///
+    /// Events emitted before subscription are not retained. Subscribe prior to the work that
+    /// produces the events you want to observe.
+    ///
+    /// - Parameter bufferSize: Maximum per-consumer buffered events. Defaults to 1024.
+    public func events(bufferSize: Int = 1024) -> AsyncStream<CodexEvent> {
+        let id = UUID()
+        let stream = AsyncStream<CodexEvent>(bufferingPolicy: .bufferingOldest(bufferSize)) { continuation in
+            if streamIsFinished {
+                continuation.finish()
+                return
+            }
+            subscribers[id] = continuation
+            subscriberDropCounts[id] = 0
+            continuation.onTermination = { [weak self] _ in
+                guard let self else { return }
+                Task { await self.removeSubscriber(id) }
             }
         }
-#endif
-        eventContinuation.finish()
+        return stream
     }
 
+    /// Observe a specific typed notification method as an `AsyncStream` of its params.
+    ///
+    /// Filters the main event stream and extracts the matching params value. Useful when only
+    /// one notification type is of interest — avoids switching on the whole `CodexEvent` enum.
+    ///
+    /// ```swift
+    /// for await delta in await client.notifications(of: ServerNotifications.AgentMessageDelta.self) {
+    ///     print(delta.content)
+    /// }
+    /// ```
+    public func notifications<Method: CodexServerNotificationMethod>(
+        of method: Method.Type,
+        bufferSize: Int = 1024
+    ) async -> AsyncStream<Method.Params> where Method.Params: Sendable {
+        let base = events(bufferSize: bufferSize)
+        return AsyncStream { continuation in
+            let task = Task {
+                for await event in base {
+                    if Task.isCancelled { break }
+                    if case .notification(let notification) = event,
+                       notification.method == Method.method,
+                       let params = extractParams(from: notification, method: Method.self) {
+                        continuation.yield(params)
+                    }
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private func removeSubscriber(_ id: UUID) {
+        subscribers.removeValue(forKey: id)
+        subscriberDropCounts.removeValue(forKey: id)
+    }
+
+    /// Connect to a codex app-server.
+    ///
+    /// Launches the codex process (for `.localManaged`) or opens a websocket to the remote URL,
+    /// runs the `initialize` handshake, and returns a ready-to-use client.
+    ///
+    /// - Throws: `CodexClientError` on launch, version-mismatch, or handshake failure.
     public static func connect(
         _ connection: CodexConnection,
         options: CodexClientOptions
@@ -51,14 +119,24 @@ public actor CodexClient {
         return client
     }
 
+    /// Invoke a typed client-to-server request.
+    ///
+    /// The request is encoded, dispatched over the websocket, and awaited until the server
+    /// replies (or the connection closes). Cancellation of the calling task cancels the pending
+    /// request.
+    ///
+    /// - Throws: `CodexClientError.rpcError` if the server returned a JSON-RPC error,
+    ///   `CodexClientError.connectionClosed` if the connection drops mid-flight,
+    ///   `CancellationError` if the calling task is cancelled.
     public func call<Method: CodexRPCMethod>(
         _ method: Method.Type,
         params: Method.Params
     ) async throws -> Method.Response {
         let data = try await request(method: method.method.rawValue, params: params)
-        return try decoder.decode(Method.Response.self, from: data)
+        return try decoder.decode(JSONRPCSuccessResponse<Method.Response>.self, from: data).result
     }
 
+    /// Send a success response to a typed server-to-client request.
     public func respond<Method: CodexServerRequestMethod>(
         to request: TypedServerRequest<Method>,
         result: Method.Response
@@ -66,30 +144,34 @@ public actor CodexClient {
         try await sendResponse(id: request.id, result: result)
     }
 
+    /// Reject a server-initiated request by id with a JSON-RPC error.
+    ///
+    /// Defaults to JSON-RPC internal-error code `-32603`. Use `-32601` for "method not found".
     public func reject(
         requestID: RequestId,
-        code: Int = -32001,
+        code: Int = -32603,
         message: String
     ) async throws {
-        let idObject = try jsonObject(from: requestID)
-        let payload: [String: Any] = [
-            "id": idObject,
-            "error": [
-                "code": code,
-                "message": message,
-            ],
-        ]
-        try await send(jsonObject: payload)
+        let envelope = JSONRPCOutgoingErrorResponse(
+            id: requestID,
+            error: JSONRPCErrorPayload(code: code, message: message)
+        )
+        try await sendEncodable(envelope)
     }
 
+    /// Reject an untyped server-initiated request.
     public func reject(
         _ request: AnyTypedServerRequest,
-        code: Int = -32001,
+        code: Int = -32603,
         message: String
     ) async throws {
         try await reject(requestID: request.id, code: code, message: message)
     }
 
+    /// Shut down the websocket, cancel pending requests, and (for local launches) terminate
+    /// the codex app-server process. All active event streams are finished.
+    ///
+    /// It is always safe to call `disconnect` more than once.
     public func disconnect() async {
         await shutdown(reason: nil)
     }
@@ -98,6 +180,7 @@ public actor CodexClient {
         _ connection: CodexConnection,
         options: CodexClientOptions
     ) async throws {
+        codexClientLogger.debug("bootstrap starting")
         emit(.connectionStateChanged(.connecting))
 
         let connectionInfo: (url: URL, authToken: String?)
@@ -110,12 +193,14 @@ public actor CodexClient {
             )
             self.localProcess = process
             connectionInfo = (process.websocketURL, nil)
+            startProcessLogForwarding(process)
 #endif
         case .remote(let remoteOptions):
             try validate(remoteOptions: remoteOptions, policy: options.versionPolicy)
             connectionInfo = (remoteOptions.url, remoteOptions.authToken)
         }
 
+        codexClientLogger.debug("opening websocket \(connectionInfo.url)")
         try await openWebSocket(url: connectionInfo.url, authToken: connectionInfo.authToken)
         emit(.connectionStateChanged(.connected))
 
@@ -134,8 +219,20 @@ public actor CodexClient {
         try validate(serverInfo: response, policy: options.versionPolicy)
         self.serverInfo = response
         try await sendInitializedNotification()
+        codexClientLogger.debug("initialized; serverInfo.userAgent=\(response.userAgent, privacy: .public)")
         emit(.connectionStateChanged(.initialized))
     }
+
+#if os(macOS)
+    private func startProcessLogForwarding(_ process: LocalCodexAppServerProcess) {
+        Task { [weak self] in
+            let lines = await process.stderrLines()
+            for await line in lines {
+                await self?.emit(.processLog(line: line))
+            }
+        }
+    }
+#endif
 
     private func validate(remoteOptions: RemoteServerOptions, policy: VersionPolicy) throws {
         if let authToken = remoteOptions.authToken, !authToken.isEmpty,
@@ -202,55 +299,59 @@ public actor CodexClient {
         }
     }
 
-    private func request(method: String, params: (any Encodable)?) async throws -> Data {
+    private func request<Params: Encodable>(method: String, params: Params) async throws -> Data {
         guard let task = webSocketTask, connected else {
             throw CodexClientError.notConnected
         }
+        try Task.checkCancellation()
 
         let requestID = nextRequestID
         nextRequestID += 1
 
-        var payload: [String: Any] = [
-            "id": requestID,
-            "method": method,
-        ]
-        if let params {
-            payload["params"] = try jsonObject(from: AnyEncodableBox(params))
-        }
+        let envelope = JSONRPCRequest(id: requestID, method: method, params: params)
+        let data = try encoder.encode(envelope)
 
-        let data = try JSONSerialization.data(withJSONObject: payload)
-
-        return try await withCheckedThrowingContinuation { continuation in
-            pendingRequests[requestID] = continuation
-            Task {
-                do {
-                    try await send(text: data, via: task)
-                } catch {
-                    if let pending = self.pendingRequests.removeValue(forKey: requestID) {
-                        pending.resume(throwing: error)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                pendingRequests[requestID] = continuation
+                Task {
+                    do {
+                        try await send(text: data, via: task)
+                    } catch {
+                        if let pending = await self.removePending(requestID) {
+                            pending.resume(throwing: error)
+                        }
                     }
                 }
             }
+        } onCancel: {
+            Task { await self.cancelPending(requestID) }
+        }
+    }
+
+    private func removePending(_ id: Int) -> CheckedContinuation<Data, Error>? {
+        pendingRequests.removeValue(forKey: id)
+    }
+
+    private func cancelPending(_ id: Int) {
+        if let continuation = pendingRequests.removeValue(forKey: id) {
+            continuation.resume(throwing: CancellationError())
         }
     }
 
     private func sendInitializedNotification() async throws {
-        try await send(jsonObject: ["method": "initialized"])
+        try await sendEncodable(JSONRPCClientNotification<EmptyParams?>(method: "initialized", params: nil))
     }
 
     private func sendResponse<Result: Encodable>(id: RequestId, result: Result) async throws {
-        let payload: [String: Any] = [
-            "id": try jsonObject(from: id),
-            "result": try jsonObject(from: result),
-        ]
-        try await send(jsonObject: payload)
+        try await sendEncodable(JSONRPCSuccessEnvelope(id: id, result: result))
     }
 
-    private func send(jsonObject: [String: Any]) async throws {
+    private func sendEncodable(_ value: some Encodable) async throws {
         guard let task = webSocketTask, connected else {
             throw CodexClientError.notConnected
         }
-        let data = try JSONSerialization.data(withJSONObject: jsonObject)
+        let data = try encoder.encode(value)
         try await send(text: data, via: task)
     }
 
@@ -259,11 +360,6 @@ public actor CodexClient {
             throw CodexClientError.invalidResponse("failed to encode websocket frame as UTF-8")
         }
         try await task.send(.string(string))
-    }
-
-    private func jsonObject(from value: some Encodable) throws -> Any {
-        let encoded = try encoder.encode(value)
-        return try JSONSerialization.jsonObject(with: encoded)
     }
 
     private func receiveLoop() async {
@@ -307,22 +403,7 @@ public actor CodexClient {
             )
             return
         }
-        if let resultData = extractResultData(from: data) {
-            continuation.resume(returning: resultData)
-        } else {
-            continuation.resume(returning: Data("{}".utf8))
-        }
-    }
-
-    private func extractResultData(from data: Data) -> Data? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let result = json["result"] else {
-            return nil
-        }
-        if result is NSNull {
-            return Data("{}".utf8)
-        }
-        return try? JSONSerialization.data(withJSONObject: result)
+        continuation.resume(returning: data)
     }
 
     private func shutdown(reason: String?) async {
@@ -364,12 +445,55 @@ public actor CodexClient {
         if let reason {
             emit(.disconnected(reason))
         }
-        eventContinuation.finish()
+        streamIsFinished = true
+        for (_, continuation) in subscribers {
+            continuation.finish()
+        }
+        subscribers.removeAll()
+        subscriberDropCounts.removeAll()
     }
 
     private func emit(_ event: CodexEvent) {
-        eventContinuation.yield(event)
+        for (id, continuation) in subscribers {
+            let pendingLag = subscriberDropCounts[id, default: 0]
+            if pendingLag > 0 {
+                let laggedResult = continuation.yield(.lagged(skipped: pendingLag))
+                switch laggedResult {
+                case .enqueued:
+                    subscriberDropCounts[id] = 0
+                case .dropped:
+                    subscriberDropCounts[id] = pendingLag
+                case .terminated:
+                    continue
+                @unknown default:
+                    break
+                }
+            }
+            switch continuation.yield(event) {
+            case .enqueued:
+                break
+            case .dropped:
+                subscriberDropCounts[id, default: 0] += 1
+            case .terminated:
+                break
+            @unknown default:
+                break
+            }
+        }
     }
+}
+
+private func extractParams<Method: CodexServerNotificationMethod>(
+    from notification: ServerNotificationEvent,
+    method: Method.Type
+) -> Method.Params? {
+    let mirror = Mirror(reflecting: notification)
+    for child in mirror.children {
+        if let params = child.value as? Method.Params {
+            return params
+        }
+    }
+    return nil
 }
 
 private struct IncomingEnvelope: Decodable {
@@ -444,16 +568,70 @@ func routeIncomingData(_ data: Data, decoder: JSONDecoder) -> IncomingMessageDis
     )
 }
 
-private struct AnyEncodableBox: Encodable {
-    let value: any Encodable
+struct JSONRPCRequest<Params: Encodable>: Encodable {
+    let id: Int
+    let method: String
+    let params: Params
+}
 
-    init(_ value: any Encodable) {
-        self.value = value
-    }
+struct JSONRPCClientNotification<Params: Encodable>: Encodable {
+    let method: String
+    let params: Params
 
     func encode(to encoder: Encoder) throws {
-        try value.encode(to: encoder)
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(method, forKey: .method)
+        if let params = params as? OptionalEncodable, params.isNil {
+            return
+        }
+        try container.encode(params, forKey: .params)
     }
+
+    private enum CodingKeys: String, CodingKey { case method, params }
+}
+
+private protocol OptionalEncodable {
+    var isNil: Bool { get }
+}
+
+extension Optional: OptionalEncodable {
+    var isNil: Bool {
+        if case .none = self { return true }
+        return false
+    }
+}
+
+struct JSONRPCSuccessEnvelope<Result: Encodable>: Encodable {
+    let id: RequestId
+    let result: Result
+}
+
+struct JSONRPCOutgoingErrorResponse: Encodable {
+    let id: RequestId
+    let error: JSONRPCErrorPayload
+}
+
+struct JSONRPCErrorPayload: Encodable {
+    let code: Int
+    let message: String
+}
+
+struct JSONRPCSuccessResponse<Result: Decodable>: Decodable {
+    let result: Result
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if container.contains(.result),
+           try container.decodeNil(forKey: .result) == false {
+            self.result = try container.decode(Result.self, forKey: .result)
+        } else if let empty = EmptyResponse() as? Result {
+            self.result = empty
+        } else {
+            self.result = try container.decode(Result.self, forKey: .result)
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey { case result }
 }
 
 private final class WebSocketOpenDelegate: NSObject, URLSessionWebSocketDelegate, URLSessionTaskDelegate, @unchecked Sendable {

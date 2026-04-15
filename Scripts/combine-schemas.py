@@ -9,9 +9,18 @@ import sys
 from pathlib import Path
 
 
-def merge_definitions(target: dict, source: dict) -> None:
+def merge_definitions(target: dict, source: dict, source_path: Path | None = None) -> None:
     for key, value in source.items():
-        target.setdefault(key, value)
+        existing = target.get(key)
+        if existing is None:
+            target[key] = value
+            continue
+        if existing != value:
+            origin = f" ({source_path})" if source_path else ""
+            print(
+                f"warning: duplicate schema definition {key!r} with differing bodies{origin}; keeping first",
+                file=sys.stderr,
+            )
 
 
 def load_json(path: Path) -> dict:
@@ -44,7 +53,7 @@ def main() -> int:
     definitions: dict[str, object] = {}
 
     for path in sorted(schema_dir.glob("*.schemas.json")):
-        merge_definitions(definitions, load_json(path).get("definitions", {}))
+        merge_definitions(definitions, load_json(path).get("definitions", {}), path)
 
     for child_dir in (schema_dir / "v2", schema_dir / "v1"):
         if not child_dir.is_dir():
@@ -53,7 +62,7 @@ def main() -> int:
             if path.name.endswith(".schemas.json"):
                 continue
             data = load_json(path)
-            merge_definitions(definitions, data.get("definitions", {}))
+            merge_definitions(definitions, data.get("definitions", {}), path)
             add_root_definition(definitions, data, path.stem)
 
     for path in sorted(schema_dir.glob("*.json")):

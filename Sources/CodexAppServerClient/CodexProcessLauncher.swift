@@ -6,16 +6,23 @@ import Darwin
 #endif
 
 #if os(macOS)
-internal final class LocalCodexAppServerProcess: @unchecked Sendable {
-    let websocketURL: URL
+internal actor LocalCodexAppServerProcess {
+    nonisolated let websocketURL: URL
 
     private let process: Process
     private let stderrDrainTask: Task<Void, Never>
+    private let stderrBroadcaster: StderrBroadcaster
 
-    private init(process: Process, websocketURL: URL, stderrDrainTask: Task<Void, Never>) {
+    private init(
+        process: Process,
+        websocketURL: URL,
+        stderrDrainTask: Task<Void, Never>,
+        stderrBroadcaster: StderrBroadcaster
+    ) {
         self.process = process
         self.websocketURL = websocketURL
         self.stderrDrainTask = stderrDrainTask
+        self.stderrBroadcaster = stderrBroadcaster
     }
 
     static func launch(
@@ -48,9 +55,6 @@ internal final class LocalCodexAppServerProcess: @unchecked Sendable {
         for (key, value) in options.environment {
             environment[key] = value
         }
-        if environment["RUST_LOG"] == nil {
-            environment["RUST_LOG"] = "warn"
-        }
         process.environment = environment
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
@@ -58,15 +62,16 @@ internal final class LocalCodexAppServerProcess: @unchecked Sendable {
         let stderrPipe = Pipe()
         process.standardError = stderrPipe
 
-        let stderrBuffer = LaunchLogBuffer()
+        let broadcaster = StderrBroadcaster()
         let stderrTask = Task.detached { [handle = stderrPipe.fileHandleForReading] in
             do {
                 for try await line in handle.bytes.lines {
-                    await stderrBuffer.append(String(line))
+                    await broadcaster.append(String(line))
                 }
             } catch {
-                await stderrBuffer.append(error.localizedDescription)
+                await broadcaster.append(error.localizedDescription)
             }
+            await broadcaster.finish()
         }
 
         do {
@@ -80,25 +85,31 @@ internal final class LocalCodexAppServerProcess: @unchecked Sendable {
             try await waitUntilReady(
                 process: process,
                 readyURL: readyURL,
-                stderrBuffer: stderrBuffer,
+                broadcaster: broadcaster,
                 timeoutSeconds: 10
             )
         } catch {
             stderrTask.cancel()
-            terminate(process)
+            await terminate(process)
             throw error
         }
 
         return LocalCodexAppServerProcess(
             process: process,
             websocketURL: websocketURL,
-            stderrDrainTask: stderrTask
+            stderrDrainTask: stderrTask,
+            stderrBroadcaster: broadcaster
         )
+    }
+
+    func stderrLines() async -> AsyncStream<String> {
+        await stderrBroadcaster.subscribe()
     }
 
     func stop() async {
         stderrDrainTask.cancel()
-        terminate(process)
+        await stderrBroadcaster.finish()
+        await terminate(process)
     }
 }
 #endif
@@ -172,29 +183,61 @@ private func withTimeout<T: Sendable>(
 }
 
 #if os(macOS)
-private actor LaunchLogBuffer {
-    private let maxLines = 20
-    private var lines: [String] = []
+internal actor StderrBroadcaster {
+    private let maxBufferedLines = 20
+    private var recentLines: [String] = []
+    private var subscribers: [UUID: AsyncStream<String>.Continuation] = [:]
+    private var finished = false
 
     func append(_ line: String) {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        lines.append(trimmed)
-        if lines.count > maxLines {
-            lines.removeFirst(lines.count - maxLines)
+        recentLines.append(trimmed)
+        if recentLines.count > maxBufferedLines {
+            recentLines.removeFirst(recentLines.count - maxBufferedLines)
+        }
+        for (_, continuation) in subscribers {
+            continuation.yield(trimmed)
         }
     }
 
+    func subscribe() -> AsyncStream<String> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            if finished {
+                continuation.finish()
+                return
+            }
+            subscribers[id] = continuation
+            continuation.onTermination = { [weak self] _ in
+                guard let self else { return }
+                Task { await self.removeSubscriber(id) }
+            }
+        }
+    }
+
+    private func removeSubscriber(_ id: UUID) {
+        subscribers.removeValue(forKey: id)
+    }
+
     func failureDescription(fallback: String) -> String {
-        guard !lines.isEmpty else { return fallback }
-        return "\(fallback)\n\(lines.joined(separator: "\n"))"
+        guard !recentLines.isEmpty else { return fallback }
+        return "\(fallback)\n\(recentLines.joined(separator: "\n"))"
+    }
+
+    func finish() {
+        finished = true
+        for (_, continuation) in subscribers {
+            continuation.finish()
+        }
+        subscribers.removeAll()
     }
 }
 
 private func waitUntilReady(
     process: Process,
     readyURL: URL,
-    stderrBuffer: LaunchLogBuffer,
+    broadcaster: StderrBroadcaster,
     timeoutSeconds: Double
 ) async throws {
     let configuration = URLSessionConfiguration.ephemeral
@@ -208,7 +251,7 @@ private func waitUntilReady(
         try await withTimeout(seconds: timeoutSeconds) {
             while true {
                 if !process.isRunning {
-                    let message = await stderrBuffer.failureDescription(
+                    let message = await broadcaster.failureDescription(
                         fallback: "codex app-server exited before becoming ready"
                     )
                     throw CodexClientError.processLaunchFailed(message)
@@ -228,18 +271,18 @@ private func waitUntilReady(
     } catch let error as CodexClientError {
         throw error
     } catch {
-        let message = await stderrBuffer.failureDescription(
+        let message = await broadcaster.failureDescription(
             fallback: "timed out waiting for codex app-server readiness"
         )
         throw CodexClientError.processLaunchFailed(message)
     }
 }
 
-private func terminate(_ process: Process) {
+private func terminate(_ process: Process) async {
     guard process.isRunning else { return }
     process.terminate()
     for _ in 0..<30 where process.isRunning {
-        Thread.sleep(forTimeInterval: 0.1)
+        try? await Task.sleep(for: .milliseconds(100))
     }
     if process.isRunning {
         kill(process.processIdentifier, SIGKILL)

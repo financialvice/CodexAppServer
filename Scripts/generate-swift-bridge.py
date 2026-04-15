@@ -16,7 +16,9 @@ REQUEST_RESPONSE_OVERRIDES = {
     "account/logout": "LogoutAccountResponse",
     "account/rateLimits/read": "GetAccountRateLimitsResponse",
     "app/list": "AppsListResponse",
+    "config/batchWrite": "ConfigWriteResponse",
     "config/mcpServer/reload": "McpServerRefreshResponse",
+    "config/value/write": "ConfigWriteResponse",
     "mcpServerStatus/list": "ListMcpServerStatusResponse",
 }
 
@@ -94,17 +96,36 @@ def load_schema_definitions(path: Path) -> dict[str, object]:
         return json.load(handle).get("definitions", {})
 
 
+def _lookup_definition(definitions: dict[str, object], name: str) -> dict | None:
+    candidates = [name, f"CodexProtocolRoot{name}"]
+    for candidate in candidates:
+        schema = definitions.get(candidate)
+        if isinstance(schema, dict):
+            return schema
+    for subtree_key in ("v2", "v1"):
+        subtree = definitions.get(subtree_key)
+        if not isinstance(subtree, dict):
+            continue
+        for candidate in candidates:
+            schema = subtree.get(candidate)
+            if isinstance(schema, dict):
+                return schema
+    return None
+
+
 def is_empty_object_type(definitions: dict[str, object], type_name: str | None) -> bool:
     if type_name is None:
         return False
-    candidates = [type_name, f"CodexProtocolRoot{type_name}"]
-    for candidate in candidates:
-        schema = definitions.get(candidate)
-        if not isinstance(schema, dict):
-            continue
-        if schema.get("type") == "object" and not schema.get("properties") and not schema.get("required"):
-            return True
-    return False
+    schema = _lookup_definition(definitions, type_name)
+    if schema is None:
+        return False
+    return schema.get("type") == "object" and not schema.get("properties") and not schema.get("required")
+
+
+def definition_exists(definitions: dict[str, object], type_name: str | None) -> bool:
+    if type_name is None:
+        return False
+    return _lookup_definition(definitions, type_name) is not None
 
 
 def write_rpc_bridge(

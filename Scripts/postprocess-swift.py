@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import re
 import sys
-from datetime import datetime, timezone
 
 ROOT_TYPE = "CodexProtocolRoot"
 
@@ -98,14 +97,14 @@ def main() -> int:
             lines[index] = None  # type: ignore[assignment]
             index += 1
             continue
-        if re.match(rf"^struct {ROOT_TYPE}\b", stripped) or re.match(rf"^extension {ROOT_TYPE}\b", stripped):
+        if re.match(rf"^(?:public\s+)?(?:struct|extension) {ROOT_TYPE}\b", stripped):
             index = remove_block(lines, index)
             continue
         index += 1
 
     content = "".join(line for line in lines if line is not None)
     content = "".join(add_optional_defaults_to_init_signature(line) for line in content.splitlines(keepends=True))
-    content = content.replace("internal ", "public ")
+    content = re.sub(r"\binternal\s+(?=(?:class|struct|enum|func|let|var)\b)", "public ", content)
     content = content.replace(
         "class JSONCodingKey: CodingKey",
         "final class JSONCodingKey: CodingKey",
@@ -132,12 +131,10 @@ def main() -> int:
     )
     content = re.sub(r"\n{4,}", "\n\n\n", content)
 
-    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     header = f"""// GENERATED CODE — DO NOT EDIT
 //
 // Source: codex app-server generate-json-schema --experimental
 // Codex version: {codex_version} ({installed_version})
-// Generated at: {generated_at}
 //
 // To regenerate: ./Scripts/generate-protocol.sh
 //

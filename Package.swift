@@ -3,17 +3,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "codex-app-server",
+    name: "codex-app-server-client",
     platforms: [
         .macOS(.v13),
         .iOS(.v16),
         .visionOS(.v1),
     ],
     products: [
-        .library(
-            name: "CodexAppServer",
-            targets: ["CodexAppServer"]
-        ),
         .library(
             name: "CodexAppServerClient",
             targets: ["CodexAppServerClient"]
@@ -35,17 +31,13 @@ let package = Package(
             name: "CodexAppServerClient",
             dependencies: ["CodexAppServerProtocol"]
         ),
-        .target(
-            name: "CodexAppServer",
-            dependencies: ["CodexAppServerClient", "CodexAppServerProtocol"]
-        ),
         .executableTarget(
             name: "CodexAppServerExample",
-            dependencies: ["CodexAppServer"]
+            dependencies: ["CodexAppServerClient"]
         ),
         .testTarget(
             name: "CodexAppServerTests",
-            dependencies: ["CodexAppServer", "CodexAppServerClient"]
+            dependencies: ["CodexAppServerClient"]
         ),
     ],
     swiftLanguageModes: [.v6]

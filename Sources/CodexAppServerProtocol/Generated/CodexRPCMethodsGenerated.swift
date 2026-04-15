@@ -71,7 +71,7 @@ extension RPC {
 
     public enum ConfigBatchWrite: CodexRPCMethod {
         public typealias Params = ConfigBatchWriteParams
-        public typealias Response = EmptyResponse
+        public typealias Response = ConfigWriteResponse
         public static let method = ClientRequestMethod.configBatchWrite
     }
 
@@ -95,7 +95,7 @@ extension RPC {
 
     public enum ConfigValueWrite: CodexRPCMethod {
         public typealias Params = ConfigValueWriteParams
-        public typealias Response = EmptyResponse
+        public typealias Response = ConfigWriteResponse
         public static let method = ClientRequestMethod.configValueWrite
     }
 

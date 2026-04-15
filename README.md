@@ -1,4 +1,4 @@
-# CodexAppServer
+# codex-app-server-client
 
 Minimal Swift Package Manager client for `codex app-server`.
 
@@ -46,7 +46,7 @@ Current pinned Codex version: `0.120.0`
 
 ```swift
 .package(
-    url: "https://github.com/financialvice/CodexAppServer.git",
+    url: "https://github.com/financialvice/codex-app-server-client.git",
     exact: "0.120.0"
 )
 ```

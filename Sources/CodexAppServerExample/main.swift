@@ -1,4 +1,4 @@
-import CodexAppServer
+import CodexAppServerClient
 import Foundation
 
 @main
@@ -14,11 +14,6 @@ struct CodexAppServerExample {
                 )
             )
         )
-        defer {
-            Task {
-                await client.disconnect()
-            }
-        }
 
         let userInput = UserInput(
             text: "Say hello in one short sentence.",
@@ -44,25 +39,33 @@ struct CodexAppServerExample {
         )
         print("Started turn: \(turn.turn.id)")
 
-        var iterator = client.events.makeAsyncIterator()
+        var iterator = await client.events().makeAsyncIterator()
         while let event = await iterator.next() {
             switch event {
             case .notification(let notification):
                 print("notification:", notification.method.rawValue)
                 if case .turnCompleted(let payload) = notification, payload.turn.id == turn.turn.id {
-                    return
+                    break
                 }
             case .serverRequest(let request):
                 print("server request:", request.method.rawValue)
                 try? await client.reject(request, message: "Example client does not handle server requests")
             case .disconnected(let message):
                 print("disconnected:", message)
-                return
+                break
             case .unknownMessage(let method, _):
                 print("unknown message:", method)
+            case .invalidMessage:
+                break
+            case .lagged(let skipped):
+                print("lagged:", skipped)
+            case .processLog(let line):
+                print("[codex]", line)
             case .connectionStateChanged:
                 break
             }
         }
+
+        await client.disconnect()
     }
 }

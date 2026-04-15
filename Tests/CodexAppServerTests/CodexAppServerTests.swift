@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-@testable import CodexAppServer
 @testable import CodexAppServerClient
 
 @Test
@@ -42,17 +41,8 @@ func connectsToLocalManagedAppServer() async throws {
         )
     )
 
-    var iterator = client.events.makeAsyncIterator()
-    var sawInitialized = false
-    for _ in 0..<4 {
-        guard let event = await iterator.next() else { break }
-        if case .connectionStateChanged(.initialized) = event {
-            sawInitialized = true
-            break
-        }
-    }
-
-    #expect(sawInitialized)
+    let info = await client.serverInfo
+    #expect(info != nil)
     await client.disconnect()
 }
 
@@ -74,21 +64,14 @@ func disconnectFinishesEventStream() async throws {
         )
     )
 
-    var iterator = client.events.makeAsyncIterator()
-    var sawInitialized = false
-    while let event = await iterator.next() {
-        if case .connectionStateChanged(.initialized) = event {
-            sawInitialized = true
-            break
-        }
-    }
-    #expect(sawInitialized)
-
+    var iter = await client.events().makeAsyncIterator()
     await client.disconnect()
 
-    let disconnectedEvent = await iterator.next()
-    #expect(disconnectedEvent != nil)
-
-    let terminalEvent = await iterator.next()
-    #expect(terminalEvent == nil)
+    var sawDisconnected = false
+    while let event = await iter.next() {
+        if case .connectionStateChanged(.disconnected) = event {
+            sawDisconnected = true
+        }
+    }
+    #expect(sawDisconnected)
 }

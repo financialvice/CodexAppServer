@@ -35,7 +35,8 @@ mkdir -p "${SCHEMA_DIR}" "${TS_DIR}" "${GENERATED_DIR}"
 
 python3 "${SCRIPT_DIR}/combine-schemas.py" "${SCHEMA_DIR}" "${SCHEMA_DIR}/_combined.json"
 
-bunx quicktype \
+QUICKTYPE_VERSION="${QUICKTYPE_VERSION:-23.0.171}"
+bunx "quicktype@${QUICKTYPE_VERSION}" \
   --src-lang schema \
   --lang swift \
   --top-level CodexProtocolRoot \

@@ -7,4 +7,5 @@
 - strongly verified against codex source and codex app-server protocol source
 - plug-and-play implementation for native apps
 - simple abstractions, no app-logic, fully generic client
+- websocket-only transport (no stdio); suits remote deployments and keeps the launcher path uniform with the remote path
 - releases tied to openai/codex releases, with a simple Swift Package Manager distribution path
