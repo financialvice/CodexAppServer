@@ -8,7 +8,7 @@ codex occasionally requests information or approval from the client — e.g. con
 application, approving a shell command, or eliciting input. These arrive as
 ``CodexEvent/serverRequest(_:)`` events.
 
-Each server request carries a ``RequestId`` that must be echoed back in the response. Use
+Each server request carries a `RequestId` that must be echoed back in the response. Use
 ``CodexClient/respond(to:result:)`` for a typed success response or
 ``CodexClient/reject(_:code:message:)`` to decline.
 

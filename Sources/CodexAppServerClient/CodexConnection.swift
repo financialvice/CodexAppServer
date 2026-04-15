@@ -4,7 +4,7 @@ import CodexAppServerProtocol
 /// How strictly to enforce that the running codex binary matches the version pinned to this
 /// Swift package.
 public enum VersionPolicy: Sendable {
-    /// Require the connected codex to match ``CodexBindingMetadata/codexVersion`` exactly.
+    /// Require the connected codex to match `CodexBindingMetadata.codexVersion` exactly.
     case exact
     /// Permit any codex version. The protocol wire format may drift; use with care.
     case allowMismatch
@@ -78,28 +78,73 @@ public struct CodexClientOptions: Sendable {
     }
 }
 
+/// Why a ``CodexClient`` became (or failed to stay) connected.
+///
+/// Attached to ``ConnectionState/disconnected(_:)`` and
+/// ``CodexClientError/connectionClosed(_:)`` so consumers can surface meaningful
+/// recovery UI without parsing free-form strings.
+public enum DisconnectReason: Sendable, Equatable, CustomStringConvertible {
+    /// Caller invoked ``CodexClient/disconnect()``. Not an error.
+    case clientRequested
+    /// The WebSocket closed. `code` is the close code sent by the peer if any,
+    /// `reason` is the URLSession-supplied description.
+    case webSocketClosed(code: URLSessionWebSocketTask.CloseCode?, reason: String)
+    /// A network-level failure terminated the connection.
+    case networkError(URLError)
+    /// The locally managed codex process exited. `status` is the reported exit
+    /// code when available; `description` is the best-effort reason.
+    case processExited(status: Int32?, description: String)
+    /// The `initialize` handshake or version check failed.
+    case handshakeFailed(String)
+    /// Generic fallback carrying a best-effort message.
+    case other(String)
+
+    public var description: String {
+        switch self {
+        case .clientRequested:
+            return "client requested disconnect"
+        case .webSocketClosed(let code, let reason):
+            if let code {
+                return "websocket closed (code=\(code.rawValue)): \(reason)"
+            }
+            return "websocket closed: \(reason)"
+        case .networkError(let error):
+            return "network error: \(error.localizedDescription)"
+        case .processExited(let status, let description):
+            if let status {
+                return "codex process exited (status=\(status)): \(description)"
+            }
+            return "codex process exited: \(description)"
+        case .handshakeFailed(let message):
+            return "handshake failed: \(message)"
+        case .other(let message):
+            return message
+        }
+    }
+}
+
 /// High-level connection lifecycle phase reported via ``CodexEvent/connectionStateChanged(_:)``.
-public enum ConnectionState: Sendable {
+public enum ConnectionState: Sendable, Equatable {
     /// The client is launching the local process and/or opening the websocket.
     case connecting
     /// The websocket is open; `initialize` has not yet completed.
     case connected
     /// The `initialize` handshake has finished; RPC calls may now be issued.
     case initialized
-    /// The client has been disconnected (intentionally or due to error).
-    case disconnected
+    /// The client has been disconnected. Carries the reason so UIs can render
+    /// an accurate error state without consulting a second event.
+    case disconnected(DisconnectReason)
 }
 
 /// An event observable through ``CodexClient/events(bufferSize:)``.
 public enum CodexEvent: Sendable {
-    /// Reports a change in the connection lifecycle.
+    /// Reports a change in the connection lifecycle. ``ConnectionState/disconnected(_:)``
+    /// carries the reason directly — there is no separate "disconnected" event.
     case connectionStateChanged(ConnectionState)
     /// A typed server-to-client notification.
     case notification(ServerNotificationEvent)
     /// A typed server-to-client request. Respond via ``CodexClient/respond(to:result:)`` or ``CodexClient/reject(_:code:message:)``.
     case serverRequest(AnyTypedServerRequest)
-    /// The connection was lost with the given reason.
-    case disconnected(String)
     /// A JSON frame that failed to parse as JSON-RPC.
     case invalidMessage(rawJSON: Data, errorDescription: String)
     /// A JSON-RPC message with a method string this library does not recognise (likely version skew).
@@ -118,8 +163,15 @@ public enum CodexClientError: Error, LocalizedError, Sendable {
     case unsupportedBearerTransport(URL)
     case invalidRemoteURL(String)
     case notConnected
-    case connectionClosed(String)
+    /// The connection closed before the pending RPC received a response.
+    case connectionClosed(DisconnectReason)
+    /// The server returned a JSON-RPC error. See ``isThreadNotFound`` and
+    /// other helpers for promoting this to a more specific condition.
     case rpcError(code: Int, message: String)
+    /// The server indicated the referenced thread does not exist. Common when
+    /// resuming a persisted thread whose rollout was pruned. The associated
+    /// string is the raw server message for diagnostic display.
+    case threadNotFound(String)
     case invalidResponse(String)
     case processLaunchFailed(String)
 
@@ -137,14 +189,46 @@ public enum CodexClientError: Error, LocalizedError, Sendable {
             "Invalid remote URL: \(value)"
         case .notConnected:
             "WebSocket is not connected"
-        case .connectionClosed(let message):
-            "Connection closed: \(message)"
+        case .connectionClosed(let reason):
+            "Connection closed: \(reason.description)"
         case .rpcError(_, let message):
             "RPC error: \(message)"
+        case .threadNotFound(let message):
+            "Thread not found: \(message)"
         case .invalidResponse(let message):
             "Invalid response: \(message)"
         case .processLaunchFailed(let message):
             "Failed to launch codex app-server: \(message)"
+        }
+    }
+}
+
+public extension CodexClientError {
+    /// Whether this error indicates the referenced thread no longer exists.
+    ///
+    /// Detects both ``threadNotFound(_:)`` and ``rpcError(code:message:)``
+    /// whose message text matches the codex app-server convention. Useful in a
+    /// single `catch` clause that falls back to starting a fresh thread.
+    ///
+    /// ```swift
+    /// do {
+    ///     _ = try await client.call(RPC.ThreadResume.self, params: params)
+    /// } catch let error as CodexClientError where error.isThreadNotFound {
+    ///     // saved thread id is stale; start fresh
+    /// }
+    /// ```
+    var isThreadNotFound: Bool {
+        switch self {
+        case .threadNotFound:
+            return true
+        case .rpcError(_, let message):
+            let lower = message.lowercased()
+            return lower.contains("thread not found")
+                || lower.contains("thread does not exist")
+                || lower.contains("unknown thread")
+                || lower.contains("no such thread")
+        default:
+            return false
         }
     }
 }

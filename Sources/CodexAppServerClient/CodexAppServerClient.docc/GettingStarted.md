@@ -59,8 +59,8 @@ for await event in await client.events() {
         print("notification:", note.method.rawValue)
     case .serverRequest(let request):
         try? await client.reject(request, message: "not supported")
-    case .disconnected(let reason):
-        print("disconnected:", reason)
+    case .connectionStateChanged(.disconnected(let reason)):
+        print("disconnected:", reason.description)
     default:
         break
     }
@@ -70,7 +70,7 @@ for await event in await client.events() {
 Or filter for a single method:
 
 ```swift
-for await delta in await client.notifications(of: ServerNotifications.AgentMessageDelta.self) {
-    print(delta.content)
+for await delta in await client.notifications(of: ServerNotifications.ItemAgentMessageDelta.self) {
+    print(delta.delta)
 }
 ```

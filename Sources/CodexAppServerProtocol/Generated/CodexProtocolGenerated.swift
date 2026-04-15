@@ -718,6 +718,7 @@ public extension AnalyticsConfig {
 
 /// EXPERIMENTAL - app metadata returned by app-list APIs.
 // MARK: - AppBranding
+/// EXPERIMENTAL - app metadata returned by app-list APIs.
 public struct AppBranding: Codable, Sendable {
     public var category: String?
     public var developer: String?
@@ -871,6 +872,7 @@ public enum AppToolApproval: String, Codable, Sendable {
 
 /// EXPERIMENTAL - app metadata returned by app-list APIs.
 // MARK: - AppInfo
+/// EXPERIMENTAL - app metadata returned by app-list APIs.
 public struct AppInfo: Codable, Sendable {
     public var appMetadata: AppMetadata?
     public var branding: AppBranding?
@@ -879,8 +881,8 @@ public struct AppInfo: Codable, Sendable {
     public var id: String
     public var installUrl: String?
     public var isAccessible: Bool?
-    /// Whether this app is enabled in config.toml. Example: ```toml [apps.bad_app] enabled =
-    /// false ```
+    /// Whether this app is enabled in config.toml. Example: `toml [apps.bad_app] enabled =
+    /// false `
     public var isEnabled: Bool?
     public var labels: [String: String]?
     public var logoUrl: String?
@@ -1191,6 +1193,7 @@ public extension AppScreenshot {
 
 /// EXPERIMENTAL - notification emitted when the app list changes.
 // MARK: - AppListUpdatedNotification
+/// EXPERIMENTAL - notification emitted when the app list changes.
 public struct AppListUpdatedNotification: Codable, Sendable {
     public var data: [AppInfo]
 
@@ -1240,6 +1243,7 @@ public extension AppListUpdatedNotification {
 
 /// EXPERIMENTAL - app metadata summary for plugin responses.
 // MARK: - AppSummary
+/// EXPERIMENTAL - app metadata summary for plugin responses.
 public struct AppSummary: Codable, Sendable {
     public var description: String?
     public var id: String
@@ -1927,6 +1931,7 @@ public extension AppsDefaultConfig {
 
 /// EXPERIMENTAL - list available apps/connectors.
 // MARK: - AppsListParams
+/// EXPERIMENTAL - list available apps/connectors.
 public struct AppsListParams: Codable, Sendable {
     /// Opaque pagination cursor returned by a previous call.
     public var cursor: String?
@@ -1995,6 +2000,7 @@ public extension AppsListParams {
 
 /// EXPERIMENTAL - app list response.
 // MARK: - AppsListResponse
+/// EXPERIMENTAL - app list response.
 public struct AppsListResponse: Codable, Sendable {
     public var data: [AppInfo]
     /// Opaque cursor to pass to the next call to continue after the last item. If None, there
@@ -2618,14 +2624,18 @@ public enum InitializedNotificationMethod: String, Codable, Sendable {
 ///
 /// Resize a running PTY-backed `command/exec` session by client-supplied `processId`.
 // MARK: - ClientRequest
+/// Request from the client to the server.
 public struct ClientRequest: Codable, Sendable {
     public var id: RequestId
     public var method: ClientRequestMethod
     public var params: ClientRequestLoginAccountParams?
 
     public enum CodingKeys: String, CodingKey {
+        /// NEW APIs
         case id = "id"
+        /// NEW APIs
         case method = "method"
+        /// NEW APIs
         case params = "params"
     }
 
@@ -2703,7 +2713,7 @@ public enum RequestId: Codable, Sendable {
     }
 }
 
-public enum ClientRequestMethod: String, Codable, Sendable {
+public enum ClientRequestMethod: String, Codable, Sendable, CaseIterable {
     case accountLoginCancel = "account/login/cancel"
     case accountLoginStart = "account/login/start"
     case accountLogout = "account/logout"
@@ -3860,6 +3870,7 @@ public extension Audio {
 
 /// Client-declared capabilities negotiated during initialize.
 // MARK: - InitializeCapabilities
+/// Client-declared capabilities negotiated during initialize.
 public struct InitializeCapabilities: Codable, Sendable {
     /// Opt into receiving experimental API methods and fields.
     public var experimentalApi: Bool?
@@ -3977,6 +3988,7 @@ public enum ModeKind: String, Codable, Sendable {
 
 /// Settings for a collaboration mode.
 // MARK: - Settings
+/// Settings for a collaboration mode.
 public struct Settings: Codable, Sendable {
     public var developerInstructions: String?
     public var model: String
@@ -4592,6 +4604,7 @@ public enum ContentType: String, Codable, Sendable {
 
 /// Details of a ghost commit created from a repository state.
 // MARK: - GhostCommit
+/// Details of a ghost commit created from a repository state.
 public struct GhostCommit: Codable, Sendable {
     public var id: String
     public var parent: String?
@@ -6072,6 +6085,7 @@ public enum ToolCallStatus: String, Codable, Sendable {
 
 /// Collaboration mode for a Codex session.
 // MARK: - CollaborationMode
+/// Collaboration mode for a Codex session.
 public struct CollaborationMode: Codable, Sendable {
     public var mode: ModeKind
     public var settings: SettingsClass
@@ -6185,6 +6199,7 @@ public extension SettingsClass {
 
 /// EXPERIMENTAL - collaboration mode presets response.
 // MARK: - CollaborationModeListResponse
+/// EXPERIMENTAL - collaboration mode presets response.
 public struct CollaborationModeListResponse: Codable, Sendable {
     public var data: [CollaborationModeMask]
 
@@ -6234,6 +6249,7 @@ public extension CollaborationModeListResponse {
 
 /// EXPERIMENTAL - collaboration mode preset metadata for clients.
 // MARK: - CollaborationModeMask
+/// EXPERIMENTAL - collaboration mode preset metadata for clients.
 public struct CollaborationModeMask: Codable, Sendable {
     public var mode: ModeKind?
     public var model: String?
@@ -6376,6 +6392,9 @@ public enum CommandActionType: String, Codable, Sendable {
 /// These notifications are connection-scoped. If the originating connection closes, the
 /// server terminates the process.
 // MARK: - CommandExecOutputDeltaNotification
+/// Base64-encoded output chunk emitted for a streaming `command/exec` request.
+///
+/// These notifications are connection-scoped. If the originating connection closes, the server terminates the process.
 public struct CommandExecOutputDeltaNotification: Codable, Sendable {
     /// `true` on the final streamed chunk for a stream when `outputBytesCap` truncated later
     /// output on that stream.
@@ -6461,6 +6480,9 @@ public enum CommandExecOutputStream: String, Codable, Sendable {
 /// The final `command/exec` response is deferred until the process exits and is sent only
 /// after all `command/exec/outputDelta` notifications for that connection have been emitted.
 // MARK: - CommandExecParams
+/// Run a standalone command (argv vector) in the server sandbox without creating a thread or turn.
+///
+/// The final `command/exec` response is deferred until the process exits and is sent only after all `command/exec/outputDelta` notifications for that connection have been emitted.
 public struct CommandExecParams: Codable, Sendable {
     /// Command argv vector. Empty arrays are rejected.
     public var command: [String]
@@ -6746,6 +6768,7 @@ public extension ReadOnlyAccess {
 ///
 /// New PTY size in character cells.
 // MARK: - CommandExecTerminalSize
+/// PTY size in character cells for `command/exec` PTY sessions.
 public struct CommandExecTerminalSize: Codable, Sendable {
     /// Terminal width in character cells.
     public var cols: Int
@@ -6802,6 +6825,7 @@ public extension CommandExecTerminalSize {
 
 /// Resize a running PTY-backed `command/exec` session.
 // MARK: - CommandExecResizeParams
+/// Resize a running PTY-backed `command/exec` session.
 public struct CommandExecResizeParams: Codable, Sendable {
     /// Client-supplied, connection-scoped `processId` from the original `command/exec` request.
     public var processId: String
@@ -6858,6 +6882,7 @@ public extension CommandExecResizeParams {
 
 /// Final buffered result for `command/exec`.
 // MARK: - CommandExecResponse
+/// Final buffered result for `command/exec`.
 public struct CommandExecResponse: Codable, Sendable {
     /// Process exit code.
     public var exitCode: Int
@@ -6924,6 +6949,7 @@ public extension CommandExecResponse {
 
 /// Terminate a running `command/exec` session.
 // MARK: - CommandExecTerminateParams
+/// Terminate a running `command/exec` session.
 public struct CommandExecTerminateParams: Codable, Sendable {
     /// Client-supplied, connection-scoped `processId` from the original `command/exec` request.
     public var processId: String
@@ -6974,6 +7000,7 @@ public extension CommandExecTerminateParams {
 
 /// Write stdin bytes to a running `command/exec` session, close stdin, or both.
 // MARK: - CommandExecWriteParams
+/// Write stdin bytes to a running `command/exec` session, close stdin, or both.
 public struct CommandExecWriteParams: Codable, Sendable {
     /// Close stdin after writing `deltaBase64`, if present.
     public var closeStdin: Bool?
@@ -8385,10 +8412,15 @@ public struct ConfigLayerSource: Codable, Sendable {
     public var dotCodexFolder: String?
 
     public enum CodingKeys: String, CodingKey {
+        /// Managed preferences layer delivered by MDM (macOS only).
         case domain = "domain"
+        /// Managed preferences layer delivered by MDM (macOS only).
         case key = "key"
+        /// Managed preferences layer delivered by MDM (macOS only).
         case type = "type"
+        /// Managed config layer from a file (usually `managed_config.toml`).
         case file = "file"
+        /// Path to a .codex/ folder within a project. There could be multiple of these between `cwd` and the project/repo root.
         case dotCodexFolder = "dotCodexFolder"
     }
 
@@ -9314,6 +9346,7 @@ public enum ContentItemType: String, Codable, Sendable {
 
 /// Deprecated: Use `ContextCompaction` item type instead.
 // MARK: - ContextCompactedNotification
+/// Deprecated: Use `ContextCompaction` item type instead.
 public struct ContextCompactedNotification: Codable, Sendable {
     public var threadId: String
     public var turnId: String
@@ -11960,6 +11993,7 @@ public enum FunctionCallOutputBody: Codable, Sendable {
 /// Responses API compatible content items that can be returned by a tool call. This is a
 /// subset of ContentItem with the types we support as function call outputs.
 // MARK: - FunctionCallOutputContentItem
+/// Responses API compatible content items that can be returned by a tool call. This is a subset of ContentItem with the types we support as function call outputs.
 public struct FunctionCallOutputContentItem: Codable, Sendable {
     public var text: String?
     public var type: InputFunctionCallOutputContentItemType
@@ -12135,6 +12169,7 @@ public extension FuzzyFileSearchResponse {
 
 /// Superset of [`codex_file_search::FileMatch`]
 // MARK: - FuzzyFileSearchResult
+/// Superset of [`codex_file_search::FileMatch`]
 public struct FuzzyFileSearchResult: Codable, Sendable {
     public var fileName: String
     public var indices: [Int]?
@@ -12864,6 +12899,7 @@ public extension GrantedPermissionProfile {
 /// [UNSTABLE] Temporary guardian approval review payload used by `item/autoApprovalReview/*`
 /// notifications. This shape is expected to change soon.
 // MARK: - GuardianApprovalReview
+/// [UNSTABLE] Temporary guardian approval review payload used by `item/autoApprovalReview/*` notifications. This shape is expected to change soon.
 public struct GuardianApprovalReview: Codable, Sendable {
     public var rationale: String?
     public var riskLevel: GuardianRiskLevel?
@@ -13711,11 +13747,14 @@ public struct ThreadItem: Codable, Sendable {
 
     public enum CodingKeys: String, CodingKey {
         case content = "content"
+        /// EXPERIMENTAL - proposed plan item content. The completed plan item is authoritative and may not match the concatenation of `PlanDelta` text.
         case id = "id"
+        /// EXPERIMENTAL - proposed plan item content. The completed plan item is authoritative and may not match the concatenation of `PlanDelta` text.
         case type = "type"
         case fragments = "fragments"
         case memoryCitation = "memoryCitation"
         case phase = "phase"
+        /// EXPERIMENTAL - proposed plan item content. The completed plan item is authoritative and may not match the concatenation of `PlanDelta` text.
         case text = "text"
         case summary = "summary"
         case aggregatedOutput = "aggregatedOutput"
@@ -14408,6 +14447,7 @@ public enum ThreadItemType: String, Codable, Sendable {
 /// [UNSTABLE] Temporary notification payload for guardian automatic approval review. This
 /// shape is expected to change soon.
 // MARK: - ItemGuardianApprovalReviewCompletedNotification
+/// [UNSTABLE] Temporary notification payload for guardian automatic approval review. This shape is expected to change soon.
 public struct ItemGuardianApprovalReviewCompletedNotification: Codable, Sendable {
     public var action: GuardianApprovalReviewAction
     public var decisionSource: AutoReviewDecisionSource
@@ -14500,6 +14540,7 @@ public extension ItemGuardianApprovalReviewCompletedNotification {
 /// [UNSTABLE] Temporary notification payload for guardian automatic approval review. This
 /// shape is expected to change soon.
 // MARK: - ItemGuardianApprovalReviewStartedNotification
+/// [UNSTABLE] Temporary notification payload for guardian automatic approval review. This shape is expected to change soon.
 public struct ItemGuardianApprovalReviewStartedNotification: Codable, Sendable {
     public var action: GuardianApprovalReviewAction
     public var review: GuardianApprovalReview
@@ -14644,6 +14685,7 @@ public extension ItemStartedNotification {
 
 /// A response to a request that indicates an error occurred.
 // MARK: - JSONRPCError
+/// A response to a request that indicates an error occurred.
 public struct JSONRPCError: Codable, Sendable {
     public var error: JSONRPCErrorError
     public var id: RequestId
@@ -14765,6 +14807,7 @@ public extension JSONRPCErrorError {
 ///
 /// A response to a request that indicates an error occurred.
 // MARK: - JSONRPCMessage
+/// Refers to any valid JSON-RPC object that can be decoded off the wire, or encoded to be sent.
 public struct JSONRPCMessage: Codable, Sendable {
     public var id: RequestId?
     public var method: String?
@@ -14893,6 +14936,7 @@ public extension W3CTraceContext {
 
 /// A notification which does not expect a response.
 // MARK: - JSONRPCNotification
+/// A notification which does not expect a response.
 public struct JSONRPCNotification: Codable, Sendable {
     public var method: String
     public var params: JSONAny?
@@ -14947,6 +14991,7 @@ public extension JSONRPCNotification {
 
 /// A request that expects a response.
 // MARK: - JSONRPCRequest
+/// A request that expects a response.
 public struct JSONRPCRequest: Codable, Sendable {
     public var id: RequestId
     public var method: String
@@ -15012,6 +15057,7 @@ public extension JSONRPCRequest {
 
 /// A successful (non-error) response to a request.
 // MARK: - JSONRPCResponse
+/// A successful (non-error) response to a request.
 public struct JSONRPCResponse: Codable, Sendable {
     public var id: RequestId
     public var result: JSONAny
@@ -15258,6 +15304,7 @@ public enum MCPAuthStatus: String, Codable, Sendable {
 
 /// A template description for resources available on the server.
 // MARK: - ResourceTemplate
+/// A template description for resources available on the server.
 public struct ResourceTemplate: Codable, Sendable {
     public var annotations: JSONAny?
     public var description: String?
@@ -15332,6 +15379,7 @@ public extension ResourceTemplate {
 
 /// A known resource that the server is capable of reading.
 // MARK: - Resource
+/// A known resource that the server is capable of reading.
 public struct Resource: Codable, Sendable {
     public var meta: JSONAny?
     public var annotations: JSONAny?
@@ -15421,6 +15469,7 @@ public extension Resource {
 
 /// Definition for a tool the client can call.
 // MARK: - Tool
+/// Definition for a tool the client can call.
 public struct Tool: Codable, Sendable {
     public var meta: JSONAny?
     public var annotations: JSONAny?
@@ -15605,9 +15654,13 @@ public struct CodexProtocolRootLoginAccountParams: Codable, Sendable {
 
     public enum CodingKeys: String, CodingKey {
         case apiKey = "apiKey"
+        /// [UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE. The access token must contain the same scopes that Codex-managed ChatGPT auth tokens have.
         case type = "type"
+        /// [UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE. The access token must contain the same scopes that Codex-managed ChatGPT auth tokens have.
         case accessToken = "accessToken"
+        /// [UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE. The access token must contain the same scopes that Codex-managed ChatGPT auth tokens have.
         case chatgptAccountId = "chatgptAccountId"
+        /// [UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE. The access token must contain the same scopes that Codex-managed ChatGPT auth tokens have.
         case chatgptPlanType = "chatgptPlanType"
     }
 
@@ -17288,6 +17341,7 @@ public extension MCPResourceReadResponse {
 
 /// Contents returned when reading a resource from an MCP server.
 // MARK: - ResourceContent
+/// Contents returned when reading a resource from an MCP server.
 public struct ResourceContent: Codable, Sendable {
     public var meta: JSONAny?
     public var mimeType: String?
@@ -18561,6 +18615,7 @@ public extension PermissionsRequestApprovalResponse {
 /// EXPERIMENTAL - proposed plan streaming deltas for plan items. Clients should not assume
 /// concatenated deltas match the completed plan item content.
 // MARK: - PlanDeltaNotification
+/// EXPERIMENTAL - proposed plan streaming deltas for plan items. Clients should not assume concatenated deltas match the completed plan item content.
 public struct PlanDeltaNotification: Codable, Sendable {
     public var delta: String
     public var itemId: String
@@ -20452,10 +20507,15 @@ public struct ReviewTarget: Codable, Sendable {
     public var instructions: String?
 
     public enum CodingKeys: String, CodingKey {
+        /// Review the working tree: staged, unstaged, and untracked files.
         case type = "type"
+        /// Review changes between the current branch and the given base branch.
         case branch = "branch"
+        /// Review the changes introduced by a specific commit.
         case sha = "sha"
+        /// Review the changes introduced by a specific commit.
         case title = "title"
+        /// Arbitrary instructions, equivalent to the old free-form prompt.
         case instructions = "instructions"
     }
 
@@ -20750,12 +20810,15 @@ public extension SandboxPolicy {
 /// Notifies the user of world-writable directories on Windows, which cannot be protected by
 /// the sandbox.
 // MARK: - ServerNotification
+/// Notification sent from the server to the client.
 public struct ServerNotification: Codable, Sendable {
     public var method: NotificationMethod
     public var params: ParamsClass
 
     public enum CodingKeys: String, CodingKey {
+        /// NEW NOTIFICATIONS
         case method = "method"
+        /// NEW NOTIFICATIONS
         case params = "params"
     }
 
@@ -20802,7 +20865,7 @@ public extension ServerNotification {
     }
 }
 
-public enum NotificationMethod: String, Codable, Sendable {
+public enum NotificationMethod: String, Codable, Sendable, CaseIterable {
     case accountLoginCompleted = "account/login/completed"
     case accountRateLimitsUpdated = "account/rateLimits/updated"
     case accountUpdated = "account/updated"
@@ -21388,8 +21451,8 @@ public struct DatumElement: Codable, Sendable {
     public var id: String
     public var installUrl: String?
     public var isAccessible: Bool?
-    /// Whether this app is enabled in config.toml. Example: ```toml [apps.bad_app] enabled =
-    /// false ```
+    /// Whether this app is enabled in config.toml. Example: `toml [apps.bad_app] enabled =
+    /// false `
     public var isEnabled: Bool?
     public var labels: [String: String]?
     public var logoUrl: String?
@@ -24396,14 +24459,18 @@ public extension Last {
 /// Request to exec a command. This request is used for Turns started via the legacy APIs
 /// (i.e. SendUserTurn, SendUserMessage).
 // MARK: - ServerRequest
+/// Request initiated from the server and sent to the client.
 public struct ServerRequest: Codable, Sendable {
     public var id: RequestId
     public var method: ServerRequestMethod
     public var params: ServerRequestParams
 
     public enum CodingKeys: String, CodingKey {
+        /// NEW APIs Sent when approval is requested for a specific command execution. This request is used for Turns started via turn/start.
         case id = "id"
+        /// NEW APIs Sent when approval is requested for a specific command execution. This request is used for Turns started via turn/start.
         case method = "method"
+        /// NEW APIs Sent when approval is requested for a specific command execution. This request is used for Turns started via turn/start.
         case params = "params"
     }
 
@@ -24453,7 +24520,7 @@ public extension ServerRequest {
     }
 }
 
-public enum ServerRequestMethod: String, Codable, Sendable {
+public enum ServerRequestMethod: String, Codable, Sendable, CaseIterable {
     case accountChatgptAuthTokensRefresh = "account/chatgptAuthTokens/refresh"
     case applyPatchApproval = "applyPatchApproval"
     case execCommandApproval = "execCommandApproval"
@@ -24704,6 +24771,7 @@ public extension ServerRequestParams {
 
 /// EXPERIMENTAL. Represents one request_user_input question and its required options.
 // MARK: - ToolRequestUserInputQuestion
+/// EXPERIMENTAL. Represents one request_user_input question and its required options.
 public struct ToolRequestUserInputQuestion: Codable, Sendable {
     public var header: String
     public var id: String
@@ -24778,6 +24846,7 @@ public extension ToolRequestUserInputQuestion {
 
 /// EXPERIMENTAL. Defines a single selectable option for request_user_input.
 // MARK: - ToolRequestUserInputOption
+/// EXPERIMENTAL. Defines a single selectable option for request_user_input.
 public struct ToolRequestUserInputOption: Codable, Sendable {
     public var description: String
     public var label: String
@@ -26222,6 +26291,7 @@ public extension ThreadCompactStartParams {
 
 /// Parameters for `thread/decrement_elicitation`.
 // MARK: - ThreadDecrementElicitationParams
+/// Parameters for `thread/decrement_elicitation`.
 public struct ThreadDecrementElicitationParams: Codable, Sendable {
     /// Thread whose out-of-band elicitation counter should be decremented.
     public var threadId: String
@@ -26272,6 +26342,7 @@ public extension ThreadDecrementElicitationParams {
 
 /// Response for `thread/decrement_elicitation`.
 // MARK: - ThreadDecrementElicitationResponse
+/// Response for `thread/decrement_elicitation`.
 public struct ThreadDecrementElicitationResponse: Codable, Sendable {
     /// Current out-of-band elicitation count after the decrement.
     public var count: Int
@@ -26334,6 +26405,11 @@ public extension ThreadDecrementElicitationResponse {
 ///
 /// Prefer using thread_id whenever possible.
 // MARK: - ThreadForkParams
+/// There are two ways to fork a thread: 1. By thread_id: load the thread from disk by thread_id and fork it into a new thread. 2. By path: load the thread from disk by path and fork it into a new thread.
+///
+/// If using path, the thread_id param will be ignored.
+///
+/// Prefer using thread_id whenever possible.
 public struct ThreadForkParams: Codable, Sendable {
     public var approvalPolicy: ApprovalPolicyUnion?
     /// Override where approval requests are routed for review on this thread and subsequent
@@ -26544,6 +26620,7 @@ public extension ThreadForkResponse {
 
 /// Parameters for `thread/increment_elicitation`.
 // MARK: - ThreadIncrementElicitationParams
+/// Parameters for `thread/increment_elicitation`.
 public struct ThreadIncrementElicitationParams: Codable, Sendable {
     /// Thread whose out-of-band elicitation counter should be incremented.
     public var threadId: String
@@ -26594,6 +26671,7 @@ public extension ThreadIncrementElicitationParams {
 
 /// Response for `thread/increment_elicitation`.
 // MARK: - ThreadIncrementElicitationResponse
+/// Response for `thread/increment_elicitation`.
 public struct ThreadIncrementElicitationResponse: Codable, Sendable {
     /// Current out-of-band elicitation count after the increment.
     public var count: Int
@@ -27233,6 +27311,7 @@ public extension ThreadReadResponse {
 
 /// EXPERIMENTAL - append audio input to thread realtime.
 // MARK: - ThreadRealtimeAppendAudioParams
+/// EXPERIMENTAL - append audio input to thread realtime.
 public struct ThreadRealtimeAppendAudioParams: Codable, Sendable {
     public var audio: ThreadRealtimeAudioChunk
     public var threadId: String
@@ -27287,6 +27366,7 @@ public extension ThreadRealtimeAppendAudioParams {
 
 /// EXPERIMENTAL - thread realtime audio chunk.
 // MARK: - ThreadRealtimeAudioChunk
+/// EXPERIMENTAL - thread realtime audio chunk.
 public struct ThreadRealtimeAudioChunk: Codable, Sendable {
     public var data: String
     public var itemId: String?
@@ -27356,6 +27436,7 @@ public extension ThreadRealtimeAudioChunk {
 
 /// EXPERIMENTAL - append text input to thread realtime.
 // MARK: - ThreadRealtimeAppendTextParams
+/// EXPERIMENTAL - append text input to thread realtime.
 public struct ThreadRealtimeAppendTextParams: Codable, Sendable {
     public var text: String
     public var threadId: String
@@ -27410,6 +27491,7 @@ public extension ThreadRealtimeAppendTextParams {
 
 /// EXPERIMENTAL - emitted when thread realtime transport closes.
 // MARK: - ThreadRealtimeClosedNotification
+/// EXPERIMENTAL - emitted when thread realtime transport closes.
 public struct ThreadRealtimeClosedNotification: Codable, Sendable {
     public var reason: String?
     public var threadId: String
@@ -27464,6 +27546,7 @@ public extension ThreadRealtimeClosedNotification {
 
 /// EXPERIMENTAL - emitted when thread realtime encounters an error.
 // MARK: - ThreadRealtimeErrorNotification
+/// EXPERIMENTAL - emitted when thread realtime encounters an error.
 public struct ThreadRealtimeErrorNotification: Codable, Sendable {
     public var message: String
     public var threadId: String
@@ -27518,6 +27601,7 @@ public extension ThreadRealtimeErrorNotification {
 
 /// EXPERIMENTAL - raw non-audio thread realtime item emitted by the backend.
 // MARK: - ThreadRealtimeItemAddedNotification
+/// EXPERIMENTAL - raw non-audio thread realtime item emitted by the backend.
 public struct ThreadRealtimeItemAddedNotification: Codable, Sendable {
     public var item: JSONAny
     public var threadId: String
@@ -27572,6 +27656,7 @@ public extension ThreadRealtimeItemAddedNotification {
 
 /// EXPERIMENTAL - response for listing supported realtime voices.
 // MARK: - ThreadRealtimeListVoicesResponse
+/// EXPERIMENTAL - response for listing supported realtime voices.
 public struct ThreadRealtimeListVoicesResponse: Codable, Sendable {
     public var voices: RealtimeVoicesList
 
@@ -27621,6 +27706,7 @@ public extension ThreadRealtimeListVoicesResponse {
 
 /// EXPERIMENTAL - streamed output audio emitted by thread realtime.
 // MARK: - ThreadRealtimeOutputAudioDeltaNotification
+/// EXPERIMENTAL - streamed output audio emitted by thread realtime.
 public struct ThreadRealtimeOutputAudioDeltaNotification: Codable, Sendable {
     public var audio: ThreadRealtimeAudioChunk
     public var threadId: String
@@ -27675,6 +27761,7 @@ public extension ThreadRealtimeOutputAudioDeltaNotification {
 
 /// EXPERIMENTAL - emitted with the remote SDP for a WebRTC realtime session.
 // MARK: - ThreadRealtimeSdpNotification
+/// EXPERIMENTAL - emitted with the remote SDP for a WebRTC realtime session.
 public struct ThreadRealtimeSdpNotification: Codable, Sendable {
     public var sdp: String
     public var threadId: String
@@ -27729,6 +27816,7 @@ public extension ThreadRealtimeSdpNotification {
 
 /// EXPERIMENTAL - start a thread-scoped realtime session.
 // MARK: - ThreadRealtimeStartParams
+/// EXPERIMENTAL - start a thread-scoped realtime session.
 public struct ThreadRealtimeStartParams: Codable, Sendable {
     public var prompt: String?
     public var sessionId: String?
@@ -27853,6 +27941,7 @@ public extension ThreadRealtimeStartParamsWebsocketThreadRealtimeStartTransport 
 
 /// EXPERIMENTAL - transport used by thread realtime.
 // MARK: - ThreadRealtimeStartTransport
+/// EXPERIMENTAL - transport used by thread realtime.
 public struct ThreadRealtimeStartTransport: Codable, Sendable {
     public var type: WebThreadRealtimeStartTransportType
     /// SDP offer generated by a WebRTC RTCPeerConnection after configuring audio and the
@@ -27909,6 +27998,7 @@ public extension ThreadRealtimeStartTransport {
 
 /// EXPERIMENTAL - emitted when thread realtime startup is accepted.
 // MARK: - ThreadRealtimeStartedNotification
+/// EXPERIMENTAL - emitted when thread realtime startup is accepted.
 public struct ThreadRealtimeStartedNotification: Codable, Sendable {
     public var sessionId: String?
     public var threadId: String
@@ -27968,6 +28058,7 @@ public extension ThreadRealtimeStartedNotification {
 
 /// EXPERIMENTAL - stop thread realtime.
 // MARK: - ThreadRealtimeStopParams
+/// EXPERIMENTAL - stop thread realtime.
 public struct ThreadRealtimeStopParams: Codable, Sendable {
     public var threadId: String
 
@@ -28017,6 +28108,7 @@ public extension ThreadRealtimeStopParams {
 
 /// EXPERIMENTAL - flat transcript delta emitted whenever realtime transcript text changes.
 // MARK: - ThreadRealtimeTranscriptUpdatedNotification
+/// EXPERIMENTAL - flat transcript delta emitted whenever realtime transcript text changes.
 public struct ThreadRealtimeTranscriptUpdatedNotification: Codable, Sendable {
     public var role: String
     public var text: String
@@ -28083,6 +28175,11 @@ public extension ThreadRealtimeTranscriptUpdatedNotification {
 ///
 /// Prefer using thread_id whenever possible.
 // MARK: - ThreadResumeParams
+/// There are three ways to resume a thread: 1. By thread_id: load the thread from disk by thread_id and resume it. 2. By history: instantiate the thread from memory and resume it. 3. By path: load the thread from disk by path and resume it.
+///
+/// The precedence is: history > path > thread_id. If using history or path, the thread_id param will be ignored.
+///
+/// Prefer using thread_id whenever possible.
 public struct ThreadResumeParams: Codable, Sendable {
     public var approvalPolicy: ApprovalPolicyUnion?
     /// Override where approval requests are routed for review on this thread and subsequent
@@ -29280,6 +29377,7 @@ public enum ThreadUnsubscribeStatus: String, Codable, Sendable {
 
 /// EXPERIMENTAL. Captures a user's answer to a request_user_input question.
 // MARK: - ToolRequestUserInputAnswer
+/// EXPERIMENTAL. Captures a user's answer to a request_user_input question.
 public struct ToolRequestUserInputAnswer: Codable, Sendable {
     public var answers: [String]
 
@@ -29329,6 +29427,7 @@ public extension ToolRequestUserInputAnswer {
 
 /// EXPERIMENTAL. Params sent with a request_user_input event.
 // MARK: - ToolRequestUserInputParams
+/// EXPERIMENTAL. Params sent with a request_user_input event.
 public struct ToolRequestUserInputParams: Codable, Sendable {
     public var itemId: String
     public var questions: [ToolRequestUserInputQuestion]
@@ -29393,6 +29492,7 @@ public extension ToolRequestUserInputParams {
 
 /// EXPERIMENTAL. Response payload mapping question ids to answers.
 // MARK: - ToolRequestUserInputResponse
+/// EXPERIMENTAL. Response payload mapping question ids to answers.
 public struct ToolRequestUserInputResponse: Codable, Sendable {
     public var answers: [String: ToolRequestUserInputAnswer]
 
@@ -29496,6 +29596,7 @@ public extension TurnCompletedNotification {
 /// Notification that the turn-level unified diff has changed. Contains the latest aggregated
 /// diff across all file changes in the turn.
 // MARK: - TurnDiffUpdatedNotification
+/// Notification that the turn-level unified diff has changed. Contains the latest aggregated diff across all file changes in the turn.
 public struct TurnDiffUpdatedNotification: Codable, Sendable {
     public var diff: String
     public var threadId: String

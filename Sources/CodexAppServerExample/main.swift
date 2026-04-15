@@ -40,19 +40,19 @@ struct CodexAppServerExample {
         print("Started turn: \(turn.turn.id)")
 
         var iterator = await client.events().makeAsyncIterator()
-        while let event = await iterator.next() {
+        eventLoop: while let event = await iterator.next() {
             switch event {
             case .notification(let notification):
                 print("notification:", notification.method.rawValue)
                 if case .turnCompleted(let payload) = notification, payload.turn.id == turn.turn.id {
-                    break
+                    break eventLoop
                 }
             case .serverRequest(let request):
                 print("server request:", request.method.rawValue)
                 try? await client.reject(request, message: "Example client does not handle server requests")
-            case .disconnected(let message):
-                print("disconnected:", message)
-                break
+            case .connectionStateChanged(.disconnected(let reason)):
+                print("disconnected:", reason.description)
+                break eventLoop
             case .unknownMessage(let method, _):
                 print("unknown message:", method)
             case .invalidMessage:

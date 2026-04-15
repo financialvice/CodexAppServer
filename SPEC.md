@@ -9,3 +9,6 @@
 - simple abstractions, no app-logic, fully generic client
 - websocket-only transport (no stdio); suits remote deployments and keeps the launcher path uniform with the remote path
 - releases tied to openai/codex releases, with a simple Swift Package Manager distribution path
+- generated symbols carry doc comments from upstream when available, hosted via DocC
+- the full protocol surface is discoverable in-code (enumerable methods, no hidden namespaces)
+- common footguns surface as typed values, not stringly-typed errors or duplicated decision shapes

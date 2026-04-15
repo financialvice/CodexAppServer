@@ -173,7 +173,7 @@ public actor CodexClient {
     ///
     /// It is always safe to call `disconnect` more than once.
     public func disconnect() async {
-        await shutdown(reason: nil)
+        await shutdown(reason: .clientRequested)
     }
 
     private func bootstrap(
@@ -318,7 +318,7 @@ public actor CodexClient {
                     do {
                         try await send(text: data, via: task)
                     } catch {
-                        if let pending = await self.removePending(requestID) {
+                        if let pending = self.removePending(requestID) {
                             pending.resume(throwing: error)
                         }
                     }
@@ -368,10 +368,21 @@ public actor CodexClient {
                 let message = try await task.receive()
                 await handle(message: message)
             } catch {
-                await shutdown(reason: error.localizedDescription)
+                await shutdown(reason: classifyReceiveFailure(error))
                 return
             }
         }
+    }
+
+    private func classifyReceiveFailure(_ error: Error) -> DisconnectReason {
+        if let urlError = error as? URLError {
+            return .networkError(urlError)
+        }
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            return .networkError(URLError(URLError.Code(rawValue: nsError.code)))
+        }
+        return .other(error.localizedDescription)
     }
 
     private func handle(message: URLSessionWebSocketTask.Message) async {
@@ -398,15 +409,27 @@ public actor CodexClient {
     private func handleResponse(id: Int, data: Data, error: IncomingError?) {
         guard let continuation = pendingRequests.removeValue(forKey: id) else { return }
         if let error {
-            continuation.resume(
-                throwing: CodexClientError.rpcError(code: error.code, message: error.message)
-            )
+            continuation.resume(throwing: promote(error))
             return
         }
         continuation.resume(returning: data)
     }
 
-    private func shutdown(reason: String?) async {
+    private func promote(_ error: IncomingError) -> CodexClientError {
+        let lower = error.message.lowercased()
+        let threadNotFoundPatterns = [
+            "thread not found",
+            "thread does not exist",
+            "unknown thread",
+            "no such thread",
+        ]
+        if threadNotFoundPatterns.contains(where: { lower.contains($0) }) {
+            return .threadNotFound(error.message)
+        }
+        return .rpcError(code: error.code, message: error.message)
+    }
+
+    private func shutdown(reason: DisconnectReason) async {
 #if os(macOS)
         guard connected || session != nil || localProcess != nil else { return }
 #else
@@ -422,9 +445,7 @@ public actor CodexClient {
         let pendingRequests = self.pendingRequests
         self.pendingRequests.removeAll()
         for (_, continuation) in pendingRequests {
-            continuation.resume(
-                throwing: CodexClientError.connectionClosed(reason ?? "disconnected")
-            )
+            continuation.resume(throwing: CodexClientError.connectionClosed(reason))
         }
 
         webSocketTask?.cancel(with: .goingAway, reason: nil)
@@ -441,10 +462,7 @@ public actor CodexClient {
         }
 #endif
 
-        emit(.connectionStateChanged(.disconnected))
-        if let reason {
-            emit(.disconnected(reason))
-        }
+        emit(.connectionStateChanged(.disconnected(reason)))
         streamIsFinished = true
         for (_, continuation) in subscribers {
             continuation.finish()

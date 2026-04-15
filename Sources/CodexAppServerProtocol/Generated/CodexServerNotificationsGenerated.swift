@@ -3,261 +3,349 @@
 import Foundation
 
 extension ServerNotifications {
+    /// Wire method: `account/login/completed`.
     public enum AccountLoginCompleted: CodexServerNotificationMethod {
         public typealias Params = AccountLoginCompletedNotification
         public static let method = NotificationMethod.accountLoginCompleted
     }
 
+    /// Wire method: `account/rateLimits/updated`.
     public enum AccountRateLimitsUpdated: CodexServerNotificationMethod {
         public typealias Params = AccountRateLimitsUpdatedNotification
         public static let method = NotificationMethod.accountRateLimitsUpdated
     }
 
+    /// Wire method: `account/updated`.
     public enum AccountUpdated: CodexServerNotificationMethod {
         public typealias Params = AccountUpdatedNotification
         public static let method = NotificationMethod.accountUpdated
     }
 
+    /// EXPERIMENTAL - notification emitted when the app list changes.
+    ///
+    /// Wire method: `app/list/updated`.
     public enum AppListUpdated: CodexServerNotificationMethod {
         public typealias Params = AppListUpdatedNotification
         public static let method = NotificationMethod.appListUpdated
     }
 
+    /// Base64-encoded output chunk emitted for a streaming `command/exec` request.
+    ///
+    /// These notifications are connection-scoped. If the originating connection closes, the server terminates the process.
+    ///
+    /// Wire method: `command/exec/outputDelta`.
     public enum CommandExecOutputDelta: CodexServerNotificationMethod {
         public typealias Params = CommandExecOutputDeltaNotification
         public static let method = NotificationMethod.commandExecOutputDelta
     }
 
+    /// Wire method: `configWarning`.
     public enum ConfigWarning: CodexServerNotificationMethod {
         public typealias Params = ConfigWarningNotification
         public static let method = NotificationMethod.configWarning
     }
 
+    /// Wire method: `deprecationNotice`.
     public enum DeprecationNotice: CodexServerNotificationMethod {
         public typealias Params = DeprecationNoticeNotification
         public static let method = NotificationMethod.deprecationNotice
     }
 
+    /// Wire method: `error`.
     public enum Error: CodexServerNotificationMethod {
         public typealias Params = ErrorNotification
         public static let method = NotificationMethod.error
     }
 
+    /// Filesystem watch notification emitted for `fs/watch` subscribers.
+    ///
+    /// Wire method: `fs/changed`.
     public enum FsChanged: CodexServerNotificationMethod {
         public typealias Params = FSChangedNotification
         public static let method = NotificationMethod.fsChanged
     }
 
+    /// Wire method: `fuzzyFileSearch/sessionCompleted`.
     public enum FuzzyFileSearchSessionCompleted: CodexServerNotificationMethod {
         public typealias Params = FuzzyFileSearchSessionCompletedNotification
         public static let method = NotificationMethod.fuzzyFileSearchSessionCompleted
     }
 
+    /// Wire method: `fuzzyFileSearch/sessionUpdated`.
     public enum FuzzyFileSearchSessionUpdated: CodexServerNotificationMethod {
         public typealias Params = FuzzyFileSearchSessionUpdatedNotification
         public static let method = NotificationMethod.fuzzyFileSearchSessionUpdated
     }
 
+    /// Wire method: `hook/completed`.
     public enum HookCompleted: CodexServerNotificationMethod {
         public typealias Params = HookCompletedNotification
         public static let method = NotificationMethod.hookCompleted
     }
 
+    /// Wire method: `hook/started`.
     public enum HookStarted: CodexServerNotificationMethod {
         public typealias Params = HookStartedNotification
         public static let method = NotificationMethod.hookStarted
     }
 
+    /// Wire method: `item/agentMessage/delta`.
     public enum ItemAgentMessageDelta: CodexServerNotificationMethod {
         public typealias Params = AgentMessageDeltaNotification
         public static let method = NotificationMethod.itemAgentMessageDelta
     }
 
+    /// [UNSTABLE] Temporary notification payload for guardian automatic approval review. This shape is expected to change soon.
+    ///
+    /// Wire method: `item/autoApprovalReview/completed`.
     public enum ItemAutoApprovalReviewCompleted: CodexServerNotificationMethod {
         public typealias Params = ItemGuardianApprovalReviewCompletedNotification
         public static let method = NotificationMethod.itemAutoApprovalReviewCompleted
     }
 
+    /// [UNSTABLE] Temporary notification payload for guardian automatic approval review. This shape is expected to change soon.
+    ///
+    /// Wire method: `item/autoApprovalReview/started`.
     public enum ItemAutoApprovalReviewStarted: CodexServerNotificationMethod {
         public typealias Params = ItemGuardianApprovalReviewStartedNotification
         public static let method = NotificationMethod.itemAutoApprovalReviewStarted
     }
 
+    /// Wire method: `item/commandExecution/outputDelta`.
     public enum ItemCommandExecutionOutputDelta: CodexServerNotificationMethod {
         public typealias Params = CommandExecutionOutputDeltaNotification
         public static let method = NotificationMethod.itemCommandExecutionOutputDelta
     }
 
+    /// Wire method: `item/commandExecution/terminalInteraction`.
     public enum ItemCommandExecutionTerminalInteraction: CodexServerNotificationMethod {
         public typealias Params = TerminalInteractionNotification
         public static let method = NotificationMethod.itemCommandExecutionTerminalInteraction
     }
 
+    /// Wire method: `item/completed`.
     public enum ItemCompleted: CodexServerNotificationMethod {
         public typealias Params = ItemCompletedNotification
         public static let method = NotificationMethod.itemCompleted
     }
 
+    /// Wire method: `item/fileChange/outputDelta`.
     public enum ItemFileChangeOutputDelta: CodexServerNotificationMethod {
         public typealias Params = FileChangeOutputDeltaNotification
         public static let method = NotificationMethod.itemFileChangeOutputDelta
     }
 
+    /// Wire method: `item/mcpToolCall/progress`.
     public enum ItemMcpToolCallProgress: CodexServerNotificationMethod {
         public typealias Params = MCPToolCallProgressNotification
         public static let method = NotificationMethod.itemMcpToolCallProgress
     }
 
+    /// EXPERIMENTAL - proposed plan streaming deltas for plan items. Clients should not assume concatenated deltas match the completed plan item content.
+    ///
+    /// Wire method: `item/plan/delta`.
     public enum ItemPlanDelta: CodexServerNotificationMethod {
         public typealias Params = PlanDeltaNotification
         public static let method = NotificationMethod.itemPlanDelta
     }
 
+    /// Wire method: `item/reasoning/summaryPartAdded`.
     public enum ItemReasoningSummaryPartAdded: CodexServerNotificationMethod {
         public typealias Params = ReasoningSummaryPartAddedNotification
         public static let method = NotificationMethod.itemReasoningSummaryPartAdded
     }
 
+    /// Wire method: `item/reasoning/summaryTextDelta`.
     public enum ItemReasoningSummaryTextDelta: CodexServerNotificationMethod {
         public typealias Params = ReasoningSummaryTextDeltaNotification
         public static let method = NotificationMethod.itemReasoningSummaryTextDelta
     }
 
+    /// Wire method: `item/reasoning/textDelta`.
     public enum ItemReasoningTextDelta: CodexServerNotificationMethod {
         public typealias Params = ReasoningTextDeltaNotification
         public static let method = NotificationMethod.itemReasoningTextDelta
     }
 
+    /// Wire method: `item/started`.
     public enum ItemStarted: CodexServerNotificationMethod {
         public typealias Params = ItemStartedNotification
         public static let method = NotificationMethod.itemStarted
     }
 
+    /// Wire method: `mcpServer/oauthLogin/completed`.
     public enum McpServerOauthLoginCompleted: CodexServerNotificationMethod {
         public typealias Params = MCPServerOauthLoginCompletedNotification
         public static let method = NotificationMethod.mcpServerOauthLoginCompleted
     }
 
+    /// Wire method: `mcpServer/startupStatus/updated`.
     public enum McpServerStartupStatusUpdated: CodexServerNotificationMethod {
         public typealias Params = MCPServerStatusUpdatedNotification
         public static let method = NotificationMethod.mcpServerStartupStatusUpdated
     }
 
+    /// Wire method: `model/rerouted`.
     public enum ModelRerouted: CodexServerNotificationMethod {
         public typealias Params = ModelReroutedNotification
         public static let method = NotificationMethod.modelRerouted
     }
 
+    /// Wire method: `serverRequest/resolved`.
     public enum ServerRequestResolved: CodexServerNotificationMethod {
         public typealias Params = ServerRequestResolvedNotification
         public static let method = NotificationMethod.serverRequestResolved
     }
 
+    /// Notification emitted when watched local skill files change.
+    ///
+    /// Treat this as an invalidation signal and re-run `skills/list` with the client's current parameters when refreshed skill metadata is needed.
+    ///
+    /// Wire method: `skills/changed`.
     public enum SkillsChanged: CodexServerNotificationMethod {
         public typealias Params = EmptyResponse
         public static let method = NotificationMethod.skillsChanged
     }
 
+    /// Wire method: `thread/archived`.
     public enum ThreadArchived: CodexServerNotificationMethod {
         public typealias Params = ThreadArchivedNotification
         public static let method = NotificationMethod.threadArchived
     }
 
+    /// Wire method: `thread/closed`.
     public enum ThreadClosed: CodexServerNotificationMethod {
         public typealias Params = ThreadClosedNotification
         public static let method = NotificationMethod.threadClosed
     }
 
+    /// Deprecated: Use `ContextCompaction` item type instead.
+    ///
+    /// Wire method: `thread/compacted`.
     public enum ThreadCompacted: CodexServerNotificationMethod {
         public typealias Params = ContextCompactedNotification
         public static let method = NotificationMethod.threadCompacted
     }
 
+    /// Wire method: `thread/name/updated`.
     public enum ThreadNameUpdated: CodexServerNotificationMethod {
         public typealias Params = ThreadNameUpdatedNotification
         public static let method = NotificationMethod.threadNameUpdated
     }
 
+    /// EXPERIMENTAL - emitted when thread realtime transport closes.
+    ///
+    /// Wire method: `thread/realtime/closed`.
     public enum ThreadRealtimeClosed: CodexServerNotificationMethod {
         public typealias Params = ThreadRealtimeClosedNotification
         public static let method = NotificationMethod.threadRealtimeClosed
     }
 
+    /// EXPERIMENTAL - emitted when thread realtime encounters an error.
+    ///
+    /// Wire method: `thread/realtime/error`.
     public enum ThreadRealtimeError: CodexServerNotificationMethod {
         public typealias Params = ThreadRealtimeErrorNotification
         public static let method = NotificationMethod.threadRealtimeError
     }
 
+    /// EXPERIMENTAL - raw non-audio thread realtime item emitted by the backend.
+    ///
+    /// Wire method: `thread/realtime/itemAdded`.
     public enum ThreadRealtimeItemAdded: CodexServerNotificationMethod {
         public typealias Params = ThreadRealtimeItemAddedNotification
         public static let method = NotificationMethod.threadRealtimeItemAdded
     }
 
+    /// EXPERIMENTAL - streamed output audio emitted by thread realtime.
+    ///
+    /// Wire method: `thread/realtime/outputAudio/delta`.
     public enum ThreadRealtimeOutputAudioDelta: CodexServerNotificationMethod {
         public typealias Params = ThreadRealtimeOutputAudioDeltaNotification
         public static let method = NotificationMethod.threadRealtimeOutputAudioDelta
     }
 
+    /// EXPERIMENTAL - emitted with the remote SDP for a WebRTC realtime session.
+    ///
+    /// Wire method: `thread/realtime/sdp`.
     public enum ThreadRealtimeSdp: CodexServerNotificationMethod {
         public typealias Params = ThreadRealtimeSdpNotification
         public static let method = NotificationMethod.threadRealtimeSdp
     }
 
+    /// EXPERIMENTAL - emitted when thread realtime startup is accepted.
+    ///
+    /// Wire method: `thread/realtime/started`.
     public enum ThreadRealtimeStarted: CodexServerNotificationMethod {
         public typealias Params = ThreadRealtimeStartedNotification
         public static let method = NotificationMethod.threadRealtimeStarted
     }
 
+    /// EXPERIMENTAL - flat transcript delta emitted whenever realtime transcript text changes.
+    ///
+    /// Wire method: `thread/realtime/transcriptUpdated`.
     public enum ThreadRealtimeTranscriptUpdated: CodexServerNotificationMethod {
         public typealias Params = ThreadRealtimeTranscriptUpdatedNotification
         public static let method = NotificationMethod.threadRealtimeTranscriptUpdated
     }
 
+    /// Wire method: `thread/started`.
     public enum ThreadStarted: CodexServerNotificationMethod {
         public typealias Params = ThreadStartedNotification
         public static let method = NotificationMethod.threadStarted
     }
 
+    /// Wire method: `thread/status/changed`.
     public enum ThreadStatusChanged: CodexServerNotificationMethod {
         public typealias Params = ThreadStatusChangedNotification
         public static let method = NotificationMethod.threadStatusChanged
     }
 
+    /// Wire method: `thread/tokenUsage/updated`.
     public enum ThreadTokenUsageUpdated: CodexServerNotificationMethod {
         public typealias Params = ThreadTokenUsageUpdatedNotification
         public static let method = NotificationMethod.threadTokenUsageUpdated
     }
 
+    /// Wire method: `thread/unarchived`.
     public enum ThreadUnarchived: CodexServerNotificationMethod {
         public typealias Params = ThreadUnarchivedNotification
         public static let method = NotificationMethod.threadUnarchived
     }
 
+    /// Wire method: `turn/completed`.
     public enum TurnCompleted: CodexServerNotificationMethod {
         public typealias Params = TurnCompletedNotification
         public static let method = NotificationMethod.turnCompleted
     }
 
+    /// Notification that the turn-level unified diff has changed. Contains the latest aggregated diff across all file changes in the turn.
+    ///
+    /// Wire method: `turn/diff/updated`.
     public enum TurnDiffUpdated: CodexServerNotificationMethod {
         public typealias Params = TurnDiffUpdatedNotification
         public static let method = NotificationMethod.turnDiffUpdated
     }
 
+    /// Wire method: `turn/plan/updated`.
     public enum TurnPlanUpdated: CodexServerNotificationMethod {
         public typealias Params = TurnPlanUpdatedNotification
         public static let method = NotificationMethod.turnPlanUpdated
     }
 
+    /// Wire method: `turn/started`.
     public enum TurnStarted: CodexServerNotificationMethod {
         public typealias Params = TurnStartedNotification
         public static let method = NotificationMethod.turnStarted
     }
 
+    /// Wire method: `windowsSandbox/setupCompleted`.
     public enum WindowsSandboxSetupCompleted: CodexServerNotificationMethod {
         public typealias Params = WindowsSandboxSetupCompletedNotification
         public static let method = NotificationMethod.windowsSandboxSetupCompleted
     }
 
+    /// Wire method: `windows/worldWritableWarning`.
     public enum WindowsWorldWritableWarning: CodexServerNotificationMethod {
         public typealias Params = WindowsWorldWritableWarningNotification
         public static let method = NotificationMethod.windowsWorldWritableWarning
@@ -265,6 +353,72 @@ extension ServerNotifications {
 
 }
 
+/// All server notification methods exposed by this Codex binding, in wire order.
+///
+/// Mirrors ``RPC/allMethods``. Useful for validation, docs, or building UIs that
+/// want to surface the full notification surface without hard-coding case names.
+extension ServerNotifications {
+    public static let all: [any CodexServerNotificationMethod.Type] = [
+        ServerNotifications.AccountLoginCompleted.self,
+        ServerNotifications.AccountRateLimitsUpdated.self,
+        ServerNotifications.AccountUpdated.self,
+        ServerNotifications.AppListUpdated.self,
+        ServerNotifications.CommandExecOutputDelta.self,
+        ServerNotifications.ConfigWarning.self,
+        ServerNotifications.DeprecationNotice.self,
+        ServerNotifications.Error.self,
+        ServerNotifications.FsChanged.self,
+        ServerNotifications.FuzzyFileSearchSessionCompleted.self,
+        ServerNotifications.FuzzyFileSearchSessionUpdated.self,
+        ServerNotifications.HookCompleted.self,
+        ServerNotifications.HookStarted.self,
+        ServerNotifications.ItemAgentMessageDelta.self,
+        ServerNotifications.ItemAutoApprovalReviewCompleted.self,
+        ServerNotifications.ItemAutoApprovalReviewStarted.self,
+        ServerNotifications.ItemCommandExecutionOutputDelta.self,
+        ServerNotifications.ItemCommandExecutionTerminalInteraction.self,
+        ServerNotifications.ItemCompleted.self,
+        ServerNotifications.ItemFileChangeOutputDelta.self,
+        ServerNotifications.ItemMcpToolCallProgress.self,
+        ServerNotifications.ItemPlanDelta.self,
+        ServerNotifications.ItemReasoningSummaryPartAdded.self,
+        ServerNotifications.ItemReasoningSummaryTextDelta.self,
+        ServerNotifications.ItemReasoningTextDelta.self,
+        ServerNotifications.ItemStarted.self,
+        ServerNotifications.McpServerOauthLoginCompleted.self,
+        ServerNotifications.McpServerStartupStatusUpdated.self,
+        ServerNotifications.ModelRerouted.self,
+        ServerNotifications.ServerRequestResolved.self,
+        ServerNotifications.SkillsChanged.self,
+        ServerNotifications.ThreadArchived.self,
+        ServerNotifications.ThreadClosed.self,
+        ServerNotifications.ThreadCompacted.self,
+        ServerNotifications.ThreadNameUpdated.self,
+        ServerNotifications.ThreadRealtimeClosed.self,
+        ServerNotifications.ThreadRealtimeError.self,
+        ServerNotifications.ThreadRealtimeItemAdded.self,
+        ServerNotifications.ThreadRealtimeOutputAudioDelta.self,
+        ServerNotifications.ThreadRealtimeSdp.self,
+        ServerNotifications.ThreadRealtimeStarted.self,
+        ServerNotifications.ThreadRealtimeTranscriptUpdated.self,
+        ServerNotifications.ThreadStarted.self,
+        ServerNotifications.ThreadStatusChanged.self,
+        ServerNotifications.ThreadTokenUsageUpdated.self,
+        ServerNotifications.ThreadUnarchived.self,
+        ServerNotifications.TurnCompleted.self,
+        ServerNotifications.TurnDiffUpdated.self,
+        ServerNotifications.TurnPlanUpdated.self,
+        ServerNotifications.TurnStarted.self,
+        ServerNotifications.WindowsSandboxSetupCompleted.self,
+        ServerNotifications.WindowsWorldWritableWarning.self,
+    ]
+}
+
+/// A single server-to-client notification, carrying its typed params payload.
+///
+/// Emitted through `CodexClient.events(bufferSize:)` wrapped in `CodexEvent.notification(_:)`.
+/// Use ``ServerNotificationEvent/method`` to identify the notification type without
+/// exhaustively switching on every case — handy for logging and diagnostics.
 public enum ServerNotificationEvent: Sendable {
     case accountLoginCompleted(AccountLoginCompletedNotification)
     case accountRateLimitsUpdated(AccountRateLimitsUpdatedNotification)
@@ -319,6 +473,8 @@ public enum ServerNotificationEvent: Sendable {
     case windowsSandboxSetupCompleted(WindowsSandboxSetupCompletedNotification)
     case windowsWorldWritableWarning(WindowsWorldWritableWarningNotification)
 
+    /// The notification method identifier, without having to exhaustively switch
+    /// on each case. Convenient for logging (`print(event.method.rawValue)`).
     public var method: NotificationMethod {
         switch self {
         case .accountLoginCompleted: return .accountLoginCompleted

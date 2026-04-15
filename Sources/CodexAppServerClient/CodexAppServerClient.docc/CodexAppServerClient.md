@@ -12,22 +12,47 @@ server-initiated requests.
 The Swift package version is pinned 1:1 with a codex release; each codex bump yields a new
 tag. See `.codex-version` in the repo root.
 
+The protocol surface (every `RPC.*`, `ServerNotifications.*`, `ServerRequests.*`, params,
+response, and approval type) lives in the companion `CodexAppServerProtocol` module, which
+is re-exported automatically via `@_exported import` — `import CodexAppServerClient` is all
+you need.
+
 ## Topics
+
+### Essentials
+
+- <doc:GettingStarted>
+- ``CodexClient``
+- ``CodexClientOptions``
 
 ### Connecting
 
-- ``CodexClient``
 - ``CodexConnection``
-- ``CodexClientOptions``
 - ``LocalServerOptions``
 - ``RemoteServerOptions``
 - ``VersionPolicy``
 
-### Observing
+### Guides
+
+- <doc:StreamingATurn>
+- <doc:CancellingATurn>
+- <doc:HandlingApprovals>
+- <doc:RoutingMultipleThreads>
+- <doc:ResumingAThread>
+- <doc:ErrorHandlingAndReconnect>
+- <doc:DebuggingWithProcessLog>
+- <doc:HandlingServerRequests>
+
+### Events & Errors
 
 - ``CodexEvent``
 - ``ConnectionState``
-
-### Errors
-
+- ``DisconnectReason``
 - ``CodexClientError``
+
+### Protocol Surface
+
+The full generated protocol — every RPC method, notification, server request,
+and approval type — lives in `CodexAppServerProtocol` and is re-exported here.
+Browse them in that module's documentation, or enumerate at runtime via
+`RPC.allMethods`, `ServerNotifications.all`, and `ServerRequests.all`.

@@ -53,7 +53,8 @@ python3 "${SCRIPT_DIR}/postprocess-swift.py" \
   "${MODELS_OUT}.tmp" \
   "${MODELS_OUT}" \
   "${PINNED_VERSION}" \
-  "$("${CODEX_BIN}" --version)"
+  "$("${CODEX_BIN}" --version)" \
+  "${SCHEMA_DIR}/_combined.json"
 
 rm "${MODELS_OUT}.tmp"
 

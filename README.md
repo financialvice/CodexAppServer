@@ -51,6 +51,18 @@ Current pinned Codex version: `0.120.0`
 )
 ```
 
+## Documentation
+
+Hosted DocC docs cover concept guides (streaming, cancellation, approvals,
+multi-thread routing, resume, error handling, processLog) plus the full
+generated reference for every RPC method, notification, and server request.
+
+- Hosted: <https://financialvice.github.io/codex-app-server-client/documentation/codexappserverclient/>
+- Build locally: `swift package --disable-sandbox preview-documentation --target CodexAppServerClient`
+
+`SPEC.md` codifies the discoverability and API-shape commitments the package
+upholds across regenerations.
+
 ## Example
 
 A minimal end-to-end example executable lives in:
@@ -68,7 +80,7 @@ swift run CodexAppServerExample
 `localManaged()` is available on macOS.
 
 ```swift
-import CodexAppServer
+import CodexAppServerClient
 
 let client = try await CodexClient.connect(
     .localManaged(),

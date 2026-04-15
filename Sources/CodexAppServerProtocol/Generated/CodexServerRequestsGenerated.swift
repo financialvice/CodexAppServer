@@ -3,54 +3,65 @@
 import Foundation
 
 extension ServerRequests {
+    /// Wire method: `account/chatgptAuthTokens/refresh`.
     public enum AccountChatgptAuthTokensRefresh: CodexServerRequestMethod {
         public typealias Params = ChatgptAuthTokensRefreshParams
         public typealias Response = ChatgptAuthTokensRefreshResponse
         public static let method = ServerRequestMethod.accountChatgptAuthTokensRefresh
     }
 
+    /// Wire method: `applyPatchApproval`.
     public enum ApplyPatchApproval: CodexServerRequestMethod {
         public typealias Params = ApplyPatchApprovalParams
         public typealias Response = ApplyPatchApprovalResponse
         public static let method = ServerRequestMethod.applyPatchApproval
     }
 
+    /// Wire method: `execCommandApproval`.
     public enum ExecCommandApproval: CodexServerRequestMethod {
         public typealias Params = ExecCommandApprovalParams
         public typealias Response = ExecCommandApprovalResponse
         public static let method = ServerRequestMethod.execCommandApproval
     }
 
+    /// Wire method: `item/commandExecution/requestApproval`.
     public enum ItemCommandExecutionRequestApproval: CodexServerRequestMethod {
         public typealias Params = CommandExecutionRequestApprovalParams
         public typealias Response = CommandExecutionRequestApprovalResponse
         public static let method = ServerRequestMethod.itemCommandExecutionRequestApproval
     }
 
+    /// Wire method: `item/fileChange/requestApproval`.
     public enum ItemFileChangeRequestApproval: CodexServerRequestMethod {
         public typealias Params = FileChangeRequestApprovalParams
         public typealias Response = FileChangeRequestApprovalResponse
         public static let method = ServerRequestMethod.itemFileChangeRequestApproval
     }
 
+    /// Wire method: `item/permissions/requestApproval`.
     public enum ItemPermissionsRequestApproval: CodexServerRequestMethod {
         public typealias Params = PermissionsRequestApprovalParams
         public typealias Response = PermissionsRequestApprovalResponse
         public static let method = ServerRequestMethod.itemPermissionsRequestApproval
     }
 
+    /// Wire method: `item/tool/call`.
     public enum ItemToolCall: CodexServerRequestMethod {
         public typealias Params = DynamicToolCallParams
         public typealias Response = DynamicToolCallResponse
         public static let method = ServerRequestMethod.itemToolCall
     }
 
+    /// EXPERIMENTAL. Params sent with a request_user_input event.
+    ///
+    /// Wire method: `item/tool/requestUserInput`.
     public enum ItemToolRequestUserInput: CodexServerRequestMethod {
         public typealias Params = ToolRequestUserInputParams
         public typealias Response = ToolRequestUserInputResponse
         public static let method = ServerRequestMethod.itemToolRequestUserInput
     }
 
+    /// Wire method: `mcpServer/elicitation/request`.
     public enum McpServerElicitationRequest: CodexServerRequestMethod {
         public typealias Params = MCPServerElicitationRequestParams
         public typealias Response = MCPServerElicitationRequestResponse
@@ -59,6 +70,28 @@ extension ServerRequests {
 
 }
 
+/// All server request methods exposed by this Codex binding, in wire order.
+///
+/// Mirrors ``RPC/allMethods``. Handy for building approval/consent UIs that
+/// need to enumerate every inbound request type the server can send.
+extension ServerRequests {
+    public static let all: [any CodexServerRequestMethod.Type] = [
+        ServerRequests.AccountChatgptAuthTokensRefresh.self,
+        ServerRequests.ApplyPatchApproval.self,
+        ServerRequests.ExecCommandApproval.self,
+        ServerRequests.ItemCommandExecutionRequestApproval.self,
+        ServerRequests.ItemFileChangeRequestApproval.self,
+        ServerRequests.ItemPermissionsRequestApproval.self,
+        ServerRequests.ItemToolCall.self,
+        ServerRequests.ItemToolRequestUserInput.self,
+        ServerRequests.McpServerElicitationRequest.self,
+    ]
+}
+
+/// A type-erased server-to-client request carrying its payload.
+///
+/// Surfaced through `CodexClient.events(bufferSize:)` wrapped in `CodexEvent.serverRequest(_:)`.
+/// Respond with `CodexClient.respond(to:result:)` or `CodexClient.reject(_:code:message:)`.
 public enum AnyTypedServerRequest: Sendable {
     case accountChatgptAuthTokensRefresh(TypedServerRequest<ServerRequests.AccountChatgptAuthTokensRefresh>)
     case applyPatchApproval(TypedServerRequest<ServerRequests.ApplyPatchApproval>)
@@ -70,6 +103,7 @@ public enum AnyTypedServerRequest: Sendable {
     case itemToolRequestUserInput(TypedServerRequest<ServerRequests.ItemToolRequestUserInput>)
     case mcpServerElicitationRequest(TypedServerRequest<ServerRequests.McpServerElicitationRequest>)
 
+    /// The JSON-RPC request identifier assigned by the server.
     public var id: RequestId {
         switch self {
         case .accountChatgptAuthTokensRefresh(let request): return request.id
@@ -84,6 +118,8 @@ public enum AnyTypedServerRequest: Sendable {
         }
     }
 
+    /// Identifies which request method the server sent, without exhaustively
+    /// unwrapping each case.
     public var method: ServerRequestMethod {
         switch self {
         case .accountChatgptAuthTokensRefresh: return .accountChatgptAuthTokensRefresh
