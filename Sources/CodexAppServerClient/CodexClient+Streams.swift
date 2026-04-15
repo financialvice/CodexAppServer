@@ -45,9 +45,9 @@ extension CodexClient {
 
     /// Typed notification stream filtered to a single thread.
     ///
-    /// Combines ``CodexClient/notifications(of:bufferSize:)`` with the same threadId-extraction trick
-    /// used by ``events(forThread:bufferSize:)``. Notifications whose params struct doesn't
-    /// carry a matching `threadId` field are dropped.
+    /// Combines ``CodexClient/notifications(of:bufferSize:)`` with the same threadId-extraction
+    /// trick used by ``events(forThread:bufferSize:)``. Notifications whose params struct
+    /// doesn't carry a matching `threadId` field are dropped.
     public func notifications<Method: CodexServerNotificationMethod>(
         of method: Method.Type,
         forThread threadId: String,
@@ -59,8 +59,7 @@ extension CodexClient {
                 for await event in base {
                     if Task.isCancelled { break }
                     if case .notification(let notification) = event,
-                       notification.method == Method.method,
-                       let params = extractNotificationParams(notification, as: Method.self) {
+                       let params = notification.params(as: Method.self) {
                         continuation.yield(params)
                     }
                 }
@@ -152,8 +151,7 @@ extension CodexClient {
                 for await event in base {
                     if Task.isCancelled { break }
                     if case .serverRequest(let request) = event,
-                       request.method == Method.method,
-                       let typed = extractTypedServerRequest(request, as: Method.self) {
+                       let typed = request.typed(as: Method.self) {
                         continuation.yield(typed)
                     }
                 }
@@ -306,81 +304,20 @@ extension CodexClient {
     }
 }
 
-// MARK: - Reflection helpers
-
-private func extractNotificationParams<Method: CodexServerNotificationMethod>(
-    _ notification: ServerNotificationEvent,
-    as method: Method.Type
-) -> Method.Params? {
-    let mirror = Mirror(reflecting: notification)
-    for child in mirror.children {
-        if let params = child.value as? Method.Params {
-            return params
-        }
-    }
-    return nil
-}
-
-private func extractTypedServerRequest<Method: CodexServerRequestMethod>(
-    _ request: AnyTypedServerRequest,
-    as method: Method.Type
-) -> TypedServerRequest<Method>? {
-    let mirror = Mirror(reflecting: request)
-    for child in mirror.children {
-        if let typed = child.value as? TypedServerRequest<Method> {
-            return typed
-        }
-    }
-    return nil
-}
+// MARK: - Event routing helper
 
 /// True if the event's payload references the given thread, or it's a system event that
 /// should be visible to every per-thread subscriber.
+///
+/// Thread extraction rides on the generated ``ServerNotificationEvent/threadId`` and
+/// ``AnyTypedServerRequest/threadId`` accessors — no runtime reflection.
 private func eventBelongs(_ event: CodexEvent, toThread threadId: String) -> Bool {
     switch event {
     case .notification(let notification):
-        return extractThreadId(fromNotification: notification) == threadId
+        return notification.threadId == threadId
     case .serverRequest(let request):
-        return extractThreadId(fromServerRequest: request) == threadId
+        return request.threadId == threadId
     case .connectionStateChanged, .lagged, .processLog, .invalidMessage, .unknownMessage:
         return true
     }
-}
-
-private func extractThreadId(fromNotification notification: ServerNotificationEvent) -> String? {
-    let mirror = Mirror(reflecting: notification)
-    for child in mirror.children {
-        if let value = readThreadId(from: child.value) {
-            return value
-        }
-    }
-    return nil
-}
-
-private func extractThreadId(fromServerRequest request: AnyTypedServerRequest) -> String? {
-    let mirror = Mirror(reflecting: request)
-    for child in mirror.children {
-        // child.value is TypedServerRequest<X>; read its .params
-        let typedMirror = Mirror(reflecting: child.value)
-        for typedChild in typedMirror.children where typedChild.label == "params" {
-            if let value = readThreadId(from: typedChild.value) {
-                return value
-            }
-        }
-    }
-    return nil
-}
-
-/// Read a `threadId: String` (or `String?` non-nil) field off any value via reflection.
-private func readThreadId(from value: Any) -> String? {
-    let mirror = Mirror(reflecting: value)
-    for child in mirror.children where child.label == "threadId" {
-        if let str = child.value as? String {
-            return str
-        }
-        if let optional = child.value as? String? {
-            return optional
-        }
-    }
-    return nil
 }

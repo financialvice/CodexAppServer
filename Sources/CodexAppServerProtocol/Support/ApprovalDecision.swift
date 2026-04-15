@@ -54,60 +54,10 @@ public protocol ApprovalResponse: Sendable {
     init(intent: ApprovalIntent)
 }
 
-/// Compile-time-safe subset of ``AnyTypedServerRequest`` containing only the
-/// approval-shaped requests (those answered with an ``ApprovalIntent``).
-///
-/// Obtain one from ``AnyTypedServerRequest/asApprovalRequest`` and answer it
-/// with the client's `respond(to:intent:)` helper. UI code that treats every
-/// approval uniformly needs a single call site instead of one branch per
-/// approval method.
-public enum AnyApprovalRequest: Sendable {
-    case applyPatchApproval(TypedServerRequest<ServerRequests.ApplyPatchApproval>)
-    case execCommandApproval(TypedServerRequest<ServerRequests.ExecCommandApproval>)
-    case itemCommandExecutionRequestApproval(TypedServerRequest<ServerRequests.ItemCommandExecutionRequestApproval>)
-    case itemFileChangeRequestApproval(TypedServerRequest<ServerRequests.ItemFileChangeRequestApproval>)
-
-    /// JSON-RPC request identifier this approval is answering.
-    public var id: RequestId {
-        switch self {
-        case .applyPatchApproval(let request): return request.id
-        case .execCommandApproval(let request): return request.id
-        case .itemCommandExecutionRequestApproval(let request): return request.id
-        case .itemFileChangeRequestApproval(let request): return request.id
-        }
-    }
-
-    /// Wire method that originated this approval.
-    public var method: ServerRequestMethod {
-        switch self {
-        case .applyPatchApproval: return .applyPatchApproval
-        case .execCommandApproval: return .execCommandApproval
-        case .itemCommandExecutionRequestApproval: return .itemCommandExecutionRequestApproval
-        case .itemFileChangeRequestApproval: return .itemFileChangeRequestApproval
-        }
-    }
-}
-
-extension AnyTypedServerRequest {
-    /// Narrow to an ``AnyApprovalRequest`` if this is one of the four approval-shaped
-    /// server requests. Returns `nil` for non-approval requests
-    /// (`ItemToolCall`, `ItemToolRequestUserInput`, `PermissionsRequestApproval`,
-    /// `McpServerElicitationRequest`, `AccountChatgptAuthTokensRefresh`).
-    public var asApprovalRequest: AnyApprovalRequest? {
-        switch self {
-        case .applyPatchApproval(let request): return .applyPatchApproval(request)
-        case .execCommandApproval(let request): return .execCommandApproval(request)
-        case .itemCommandExecutionRequestApproval(let request): return .itemCommandExecutionRequestApproval(request)
-        case .itemFileChangeRequestApproval(let request): return .itemFileChangeRequestApproval(request)
-        case .accountChatgptAuthTokensRefresh,
-             .itemPermissionsRequestApproval,
-             .itemToolCall,
-             .itemToolRequestUserInput,
-             .mcpServerElicitationRequest:
-            return nil
-        }
-    }
-}
+// NOTE: ``AnyApprovalRequest`` and the ``AnyTypedServerRequest/asApprovalRequest``
+// accessor are auto-emitted into ``Generated/ApprovalMappingsGenerated.swift`` so
+// new approval-shaped request/response pairs in upstream codex are covered on
+// regeneration without hand-editing.
 
 // MARK: - Decision-enum mappings (curated vocabulary, hand-maintained)
 

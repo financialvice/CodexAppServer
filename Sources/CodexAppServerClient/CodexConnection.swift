@@ -19,32 +19,51 @@ public struct LocalServerOptions: Sendable {
     public var workingDirectory: URL?
     /// Environment variables added to or overriding the current process environment.
     public var environment: [String: String]
+    /// How long to wait for the spawned codex process to report ready before failing.
+    /// Raise this on cold-start machines, CI boxes with slow disks, or when running
+    /// a debug-build codex that takes longer to initialise. Defaults to 10 seconds.
+    public var readinessTimeout: Duration
 
     public init(
         codexExecutable: String? = nil,
         workingDirectory: URL? = nil,
-        environment: [String: String] = [:]
+        environment: [String: String] = [:],
+        readinessTimeout: Duration = .seconds(10)
     ) {
         self.codexExecutable = codexExecutable
         self.workingDirectory = workingDirectory
         self.environment = environment
+        self.readinessTimeout = readinessTimeout
     }
 }
 #endif
 
 /// Options for connecting to a pre-running codex app-server over the network.
 public struct RemoteServerOptions: Sendable {
-    /// Websocket URL (`ws://…` or `wss://…`). Bearer auth requires `wss` or a loopback host.
+    /// Websocket URL (`ws://…` or `wss://…`). Bearer auth requires `wss` or a loopback host
+    /// unless ``allowInsecureBearer`` is set.
     public var url: URL
     /// Optional bearer token; sent as `Authorization: Bearer <token>`.
     public var authToken: String?
     /// Version of the remote codex. Required when `versionPolicy == .exact`.
     public var codexVersion: String?
+    /// Permit sending the bearer `authToken` over plain `ws://` to a non-loopback host.
+    /// Defaults to `false` — the default only allows bearer auth on `wss://` or loopback
+    /// `ws://`, because sending a secret over unencrypted transport is almost always a
+    /// mistake. Set to `true` only for trusted same-subnet / VPN-only deployments where
+    /// TLS termination lives elsewhere.
+    public var allowInsecureBearer: Bool
 
-    public init(url: URL, authToken: String? = nil, codexVersion: String? = nil) {
+    public init(
+        url: URL,
+        authToken: String? = nil,
+        codexVersion: String? = nil,
+        allowInsecureBearer: Bool = false
+    ) {
         self.url = url
         self.authToken = authToken
         self.codexVersion = codexVersion
+        self.allowInsecureBearer = allowInsecureBearer
     }
 }
 

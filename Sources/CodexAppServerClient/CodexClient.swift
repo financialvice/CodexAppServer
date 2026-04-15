@@ -119,8 +119,7 @@ public actor CodexClient {
                 for await event in base {
                     if Task.isCancelled { break }
                     if case .notification(let notification) = event,
-                       notification.method == Method.method,
-                       let params = extractParams(from: notification, method: Method.self) {
+                       let params = notification.params(as: Method.self) {
                         continuation.yield(params)
                     }
                 }
@@ -274,7 +273,8 @@ public actor CodexClient {
 
     private func validate(remoteOptions: RemoteServerOptions, policy: VersionPolicy) throws {
         if let authToken = remoteOptions.authToken, !authToken.isEmpty,
-           !supportsBearerToken(url: remoteOptions.url) {
+           !supportsBearerToken(url: remoteOptions.url),
+           !remoteOptions.allowInsecureBearer {
             throw CodexClientError.unsupportedBearerTransport(remoteOptions.url)
         }
         if policy == .exact {
@@ -561,19 +561,6 @@ public actor CodexClient {
             }
         }
     }
-}
-
-private func extractParams<Method: CodexServerNotificationMethod>(
-    from notification: ServerNotificationEvent,
-    method: Method.Type
-) -> Method.Params? {
-    let mirror = Mirror(reflecting: notification)
-    for child in mirror.children {
-        if let params = child.value as? Method.Params {
-            return params
-        }
-    }
-    return nil
 }
 
 private struct IncomingEnvelope: Decodable {

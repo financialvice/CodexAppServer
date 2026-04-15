@@ -419,6 +419,9 @@ extension ServerNotifications {
 /// Emitted through `CodexClient.events(bufferSize:)` wrapped in `CodexEvent.notification(_:)`.
 /// Use ``ServerNotificationEvent/method`` to identify the notification type without
 /// exhaustively switching on every case — handy for logging and diagnostics.
+///
+/// For thread-scoped filtering prefer ``ServerNotificationEvent/threadId`` or
+/// ``ServerNotificationEvent/turnId`` over manually unwrapping each case.
 public enum ServerNotificationEvent: Sendable {
     case accountLoginCompleted(AccountLoginCompletedNotification)
     case accountRateLimitsUpdated(AccountRateLimitsUpdatedNotification)
@@ -643,6 +646,188 @@ public enum ServerNotificationEvent: Sendable {
             self = .windowsSandboxSetupCompleted(try decoder.decode(_ServerNotificationPayload<WindowsSandboxSetupCompletedNotification>.self, from: data).params)
         case .windowsWorldWritableWarning:
             self = .windowsWorldWritableWarning(try decoder.decode(_ServerNotificationPayload<WindowsWorldWritableWarningNotification>.self, from: data).params)
+        }
+    }
+}
+
+extension ServerNotificationEvent {
+    /// Typed params extractor. Returns the payload if this notification is of the
+    /// requested method, `nil` otherwise. Replaces runtime reflection with a
+    /// compile-time-verified switch.
+    public func params<Method: CodexServerNotificationMethod>(
+        as _: Method.Type
+    ) -> Method.Params? {
+        guard self.method == Method.method else { return nil }
+        switch self {
+        case .accountLoginCompleted(let payload): return payload as? Method.Params
+        case .accountRateLimitsUpdated(let payload): return payload as? Method.Params
+        case .accountUpdated(let payload): return payload as? Method.Params
+        case .appListUpdated(let payload): return payload as? Method.Params
+        case .commandExecOutputDelta(let payload): return payload as? Method.Params
+        case .configWarning(let payload): return payload as? Method.Params
+        case .deprecationNotice(let payload): return payload as? Method.Params
+        case .error(let payload): return payload as? Method.Params
+        case .fsChanged(let payload): return payload as? Method.Params
+        case .fuzzyFileSearchSessionCompleted(let payload): return payload as? Method.Params
+        case .fuzzyFileSearchSessionUpdated(let payload): return payload as? Method.Params
+        case .hookCompleted(let payload): return payload as? Method.Params
+        case .hookStarted(let payload): return payload as? Method.Params
+        case .itemAgentMessageDelta(let payload): return payload as? Method.Params
+        case .itemAutoApprovalReviewCompleted(let payload): return payload as? Method.Params
+        case .itemAutoApprovalReviewStarted(let payload): return payload as? Method.Params
+        case .itemCommandExecutionOutputDelta(let payload): return payload as? Method.Params
+        case .itemCommandExecutionTerminalInteraction(let payload): return payload as? Method.Params
+        case .itemCompleted(let payload): return payload as? Method.Params
+        case .itemFileChangeOutputDelta(let payload): return payload as? Method.Params
+        case .itemMcpToolCallProgress(let payload): return payload as? Method.Params
+        case .itemPlanDelta(let payload): return payload as? Method.Params
+        case .itemReasoningSummaryPartAdded(let payload): return payload as? Method.Params
+        case .itemReasoningSummaryTextDelta(let payload): return payload as? Method.Params
+        case .itemReasoningTextDelta(let payload): return payload as? Method.Params
+        case .itemStarted(let payload): return payload as? Method.Params
+        case .mcpServerOauthLoginCompleted(let payload): return payload as? Method.Params
+        case .mcpServerStartupStatusUpdated(let payload): return payload as? Method.Params
+        case .modelRerouted(let payload): return payload as? Method.Params
+        case .serverRequestResolved(let payload): return payload as? Method.Params
+        case .skillsChanged(let payload): return payload as? Method.Params
+        case .threadArchived(let payload): return payload as? Method.Params
+        case .threadClosed(let payload): return payload as? Method.Params
+        case .threadCompacted(let payload): return payload as? Method.Params
+        case .threadNameUpdated(let payload): return payload as? Method.Params
+        case .threadRealtimeClosed(let payload): return payload as? Method.Params
+        case .threadRealtimeError(let payload): return payload as? Method.Params
+        case .threadRealtimeItemAdded(let payload): return payload as? Method.Params
+        case .threadRealtimeOutputAudioDelta(let payload): return payload as? Method.Params
+        case .threadRealtimeSdp(let payload): return payload as? Method.Params
+        case .threadRealtimeStarted(let payload): return payload as? Method.Params
+        case .threadRealtimeTranscriptUpdated(let payload): return payload as? Method.Params
+        case .threadStarted(let payload): return payload as? Method.Params
+        case .threadStatusChanged(let payload): return payload as? Method.Params
+        case .threadTokenUsageUpdated(let payload): return payload as? Method.Params
+        case .threadUnarchived(let payload): return payload as? Method.Params
+        case .turnCompleted(let payload): return payload as? Method.Params
+        case .turnDiffUpdated(let payload): return payload as? Method.Params
+        case .turnPlanUpdated(let payload): return payload as? Method.Params
+        case .turnStarted(let payload): return payload as? Method.Params
+        case .windowsSandboxSetupCompleted(let payload): return payload as? Method.Params
+        case .windowsWorldWritableWarning(let payload): return payload as? Method.Params
+        }
+    }
+
+    /// The `threadId` carried by this notification, or `nil` if it's not
+    /// thread-scoped (account-wide updates, filesystem events, mcp server status, etc.).
+    public var threadId: String? {
+        switch self {
+        case .accountLoginCompleted: return nil
+        case .accountRateLimitsUpdated: return nil
+        case .accountUpdated: return nil
+        case .appListUpdated: return nil
+        case .commandExecOutputDelta: return nil
+        case .configWarning: return nil
+        case .deprecationNotice: return nil
+        case .error(let p): return p.threadId
+        case .fsChanged: return nil
+        case .fuzzyFileSearchSessionCompleted: return nil
+        case .fuzzyFileSearchSessionUpdated: return nil
+        case .hookCompleted(let p): return p.threadId
+        case .hookStarted(let p): return p.threadId
+        case .itemAgentMessageDelta(let p): return p.threadId
+        case .itemAutoApprovalReviewCompleted(let p): return p.threadId
+        case .itemAutoApprovalReviewStarted(let p): return p.threadId
+        case .itemCommandExecutionOutputDelta(let p): return p.threadId
+        case .itemCommandExecutionTerminalInteraction(let p): return p.threadId
+        case .itemCompleted(let p): return p.threadId
+        case .itemFileChangeOutputDelta(let p): return p.threadId
+        case .itemMcpToolCallProgress(let p): return p.threadId
+        case .itemPlanDelta(let p): return p.threadId
+        case .itemReasoningSummaryPartAdded(let p): return p.threadId
+        case .itemReasoningSummaryTextDelta(let p): return p.threadId
+        case .itemReasoningTextDelta(let p): return p.threadId
+        case .itemStarted(let p): return p.threadId
+        case .mcpServerOauthLoginCompleted: return nil
+        case .mcpServerStartupStatusUpdated: return nil
+        case .modelRerouted(let p): return p.threadId
+        case .serverRequestResolved(let p): return p.threadId
+        case .skillsChanged: return nil
+        case .threadArchived(let p): return p.threadId
+        case .threadClosed(let p): return p.threadId
+        case .threadCompacted(let p): return p.threadId
+        case .threadNameUpdated(let p): return p.threadId
+        case .threadRealtimeClosed(let p): return p.threadId
+        case .threadRealtimeError(let p): return p.threadId
+        case .threadRealtimeItemAdded(let p): return p.threadId
+        case .threadRealtimeOutputAudioDelta(let p): return p.threadId
+        case .threadRealtimeSdp(let p): return p.threadId
+        case .threadRealtimeStarted(let p): return p.threadId
+        case .threadRealtimeTranscriptUpdated(let p): return p.threadId
+        case .threadStarted(let p): return p.thread.id
+        case .threadStatusChanged(let p): return p.threadId
+        case .threadTokenUsageUpdated(let p): return p.threadId
+        case .threadUnarchived(let p): return p.threadId
+        case .turnCompleted(let p): return p.threadId
+        case .turnDiffUpdated(let p): return p.threadId
+        case .turnPlanUpdated(let p): return p.threadId
+        case .turnStarted(let p): return p.threadId
+        case .windowsSandboxSetupCompleted: return nil
+        case .windowsWorldWritableWarning: return nil
+        }
+    }
+
+    /// The `turnId` carried by this notification, or `nil` if it's not turn-scoped.
+    public var turnId: String? {
+        switch self {
+        case .accountLoginCompleted: return nil
+        case .accountRateLimitsUpdated: return nil
+        case .accountUpdated: return nil
+        case .appListUpdated: return nil
+        case .commandExecOutputDelta: return nil
+        case .configWarning: return nil
+        case .deprecationNotice: return nil
+        case .error(let p): return p.turnId
+        case .fsChanged: return nil
+        case .fuzzyFileSearchSessionCompleted: return nil
+        case .fuzzyFileSearchSessionUpdated: return nil
+        case .hookCompleted(let p): return p.turnId
+        case .hookStarted(let p): return p.turnId
+        case .itemAgentMessageDelta(let p): return p.turnId
+        case .itemAutoApprovalReviewCompleted(let p): return p.turnId
+        case .itemAutoApprovalReviewStarted(let p): return p.turnId
+        case .itemCommandExecutionOutputDelta(let p): return p.turnId
+        case .itemCommandExecutionTerminalInteraction(let p): return p.turnId
+        case .itemCompleted(let p): return p.turnId
+        case .itemFileChangeOutputDelta(let p): return p.turnId
+        case .itemMcpToolCallProgress(let p): return p.turnId
+        case .itemPlanDelta(let p): return p.turnId
+        case .itemReasoningSummaryPartAdded(let p): return p.turnId
+        case .itemReasoningSummaryTextDelta(let p): return p.turnId
+        case .itemReasoningTextDelta(let p): return p.turnId
+        case .itemStarted(let p): return p.turnId
+        case .mcpServerOauthLoginCompleted: return nil
+        case .mcpServerStartupStatusUpdated: return nil
+        case .modelRerouted(let p): return p.turnId
+        case .serverRequestResolved: return nil
+        case .skillsChanged: return nil
+        case .threadArchived: return nil
+        case .threadClosed: return nil
+        case .threadCompacted(let p): return p.turnId
+        case .threadNameUpdated: return nil
+        case .threadRealtimeClosed: return nil
+        case .threadRealtimeError: return nil
+        case .threadRealtimeItemAdded: return nil
+        case .threadRealtimeOutputAudioDelta: return nil
+        case .threadRealtimeSdp: return nil
+        case .threadRealtimeStarted: return nil
+        case .threadRealtimeTranscriptUpdated: return nil
+        case .threadStarted: return nil
+        case .threadStatusChanged: return nil
+        case .threadTokenUsageUpdated(let p): return p.turnId
+        case .threadUnarchived: return nil
+        case .turnCompleted(let p): return p.turn.id
+        case .turnDiffUpdated(let p): return p.turnId
+        case .turnPlanUpdated(let p): return p.turnId
+        case .turnStarted(let p): return p.turn.id
+        case .windowsSandboxSetupCompleted: return nil
+        case .windowsWorldWritableWarning: return nil
         }
     }
 }

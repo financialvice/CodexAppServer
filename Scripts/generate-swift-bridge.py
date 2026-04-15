@@ -10,16 +10,21 @@ import sys
 from pathlib import Path
 
 
+# Override table for methods whose response-type name cannot be derived from the
+# params-type name via the standard "strip Params, add Response" heuristic in
+# ``infer_response_name``. Entries here are genuinely load-bearing — either the
+# method has `params: undefined` (so no params name to transform) or the response
+# follows a different naming convention than the params.
+#
+# Before adding an entry, first verify ``infer_response_name`` can't derive the
+# answer from the TS union's params type. Four redundant entries were removed
+# in a cleanup pass; the remaining five all fail derivation on purpose.
 REQUEST_RESPONSE_OVERRIDES = {
-    "account/login/start": "LoginAccountResponse",
-    "account/login/cancel": "CancelLoginAccountResponse",
-    "account/logout": "LogoutAccountResponse",
-    "account/rateLimits/read": "GetAccountRateLimitsResponse",
-    "app/list": "AppsListResponse",
-    "config/batchWrite": "ConfigWriteResponse",
-    "config/mcpServer/reload": "McpServerRefreshResponse",
-    "config/value/write": "ConfigWriteResponse",
-    "mcpServerStatus/list": "ListMcpServerStatusResponse",
+    "account/logout": "LogoutAccountResponse",                 # params: undefined
+    "account/rateLimits/read": "GetAccountRateLimitsResponse", # params: undefined
+    "config/batchWrite": "ConfigWriteResponse",                 # shared response type
+    "config/mcpServer/reload": "McpServerRefreshResponse",      # params: undefined
+    "config/value/write": "ConfigWriteResponse",                # shared response type
 }
 
 
@@ -58,6 +63,74 @@ def collect_method_cases(swift_text: str, enum_name: str) -> list[tuple[str, str
     if not match:
         raise RuntimeError(f"{enum_name} enum not found in generated Swift")
     return re.findall(r'case\s+(\w+)\s*=\s*"([^"]+)"', match.group(1))
+
+
+def scan_struct_stored_fields(swift_text: str, type_name: str) -> dict[str, str]:
+    """Return a {field_name: field_type_expr} map of the stored `public var` fields
+    declared directly in ``type_name``'s top-level struct body.
+
+    Does not descend into nested types (e.g. ``CodingKeys``) because they're
+    indented deeper than the `public var` fields we care about, which always live
+    at the top level of the struct body at 4-space indent.
+    """
+    struct_pattern = re.compile(
+        rf"^public struct {re.escape(type_name)}: Codable, Sendable \{{\n"
+        rf"(.*?)"
+        rf"^\}}",
+        re.DOTALL | re.MULTILINE,
+    )
+    match = struct_pattern.search(swift_text)
+    if not match:
+        return {}
+    body = match.group(1)
+    fields: dict[str, str] = {}
+    for line in body.splitlines():
+        if not line.startswith("    public var "):
+            continue
+        inner = line[len("    public var ") :]
+        name_match = re.match(r"(\w+):\s*(.+)$", inner)
+        if name_match:
+            fields[name_match.group(1)] = name_match.group(2).strip()
+    return fields
+
+
+def resolve_id_access(
+    swift_text: str,
+    params_type: str | None,
+    flat_field: str,
+    nested_field: str,
+    cache: dict[tuple[str, str], str | None],
+) -> str | None:
+    """Return the Swift expression to reach an id on a params-shaped struct.
+
+    ``flat_field`` is the direct field name (e.g. "threadId"); ``nested_field`` is
+    the field name that holds an object whose ``id`` carries the value (e.g.
+    "thread" on ``ThreadStartedNotification`` which holds a ``Thread`` with a
+    nested ``id``). Returns the Swift expression applied to a `p` binding (e.g.
+    ``"p.threadId"``, ``"p.thread.id"``) or ``None`` if neither path resolves.
+    """
+    if params_type is None:
+        return None
+    key = (params_type, flat_field)
+    if key in cache:
+        return cache[key]
+    fields = scan_struct_stored_fields(swift_text, params_type)
+    if flat_field in fields:
+        direct = fields[flat_field]
+        # Accept String, String?, and simple alias types; skip anything complex.
+        if direct.rstrip("?") in {"String"}:
+            cache[key] = f"p.{flat_field}"
+            return cache[key]
+    if nested_field in fields:
+        nested_type = fields[nested_field].rstrip("?").strip()
+        nested_fields = scan_struct_stored_fields(swift_text, nested_type)
+        if nested_fields.get("id", "").rstrip("?") == "String":
+            optional = "?" in fields[nested_field]
+            expr = f"p.{nested_field}?.id" if optional else f"p.{nested_field}.id"
+            cache[key] = expr
+            return cache[key]
+    cache[key] = None
+    return None
 
 
 def parse_union_with_params(ts_text: str, union_name: str, has_id: bool) -> dict[str, str | None]:
@@ -311,6 +384,9 @@ def write_server_notifications(
             "/// Emitted through `CodexClient.events(bufferSize:)` wrapped in `CodexEvent.notification(_:)`.",
             "/// Use ``ServerNotificationEvent/method`` to identify the notification type without",
             "/// exhaustively switching on every case — handy for logging and diagnostics.",
+            "///",
+            "/// For thread-scoped filtering prefer ``ServerNotificationEvent/threadId`` or",
+            "/// ``ServerNotificationEvent/turnId`` over manually unwrapping each case.",
             "public enum ServerNotificationEvent: Sendable {",
         ]
     )
@@ -360,6 +436,72 @@ def write_server_notifications(
             "    }",
             "}",
             "",
+        ]
+    )
+
+    # Typed extractors: replace Mirror reflection with compile-time-checked switches.
+    id_cache: dict[tuple[str, str], str | None] = {}
+    thread_paths: list[tuple[str, str | None]] = [
+        (enum_case, resolve_id_access(swift_text, params_type, "threadId", "thread", id_cache))
+        for enum_case, _, params_type, _, _ in entries
+    ]
+    turn_paths: list[tuple[str, str | None]] = [
+        (enum_case, resolve_id_access(swift_text, params_type, "turnId", "turn", id_cache))
+        for enum_case, _, params_type, _, _ in entries
+    ]
+
+    lines.extend(
+        [
+            "extension ServerNotificationEvent {",
+            "    /// Typed params extractor. Returns the payload if this notification is of the",
+            "    /// requested method, `nil` otherwise. Replaces runtime reflection with a",
+            "    /// compile-time-verified switch.",
+            "    public func params<Method: CodexServerNotificationMethod>(",
+            "        as _: Method.Type",
+            "    ) -> Method.Params? {",
+            "        guard self.method == Method.method else { return nil }",
+            "        switch self {",
+        ]
+    )
+    for enum_case, _, _, _, _ in entries:
+        lines.append(f"        case .{enum_case}(let payload): return payload as? Method.Params")
+    lines.extend(
+        [
+            "        }",
+            "    }",
+            "",
+            "    /// The `threadId` carried by this notification, or `nil` if it's not",
+            "    /// thread-scoped (account-wide updates, filesystem events, mcp server status, etc.).",
+            "    public var threadId: String? {",
+            "        switch self {",
+        ]
+    )
+    for enum_case, path in thread_paths:
+        expr = path if path else "nil"
+        lines.append(
+            f"        case .{enum_case}{'(let p)' if path else ''}: return {expr}"
+        )
+    lines.extend(
+        [
+            "        }",
+            "    }",
+            "",
+            "    /// The `turnId` carried by this notification, or `nil` if it's not turn-scoped.",
+            "    public var turnId: String? {",
+            "        switch self {",
+        ]
+    )
+    for enum_case, path in turn_paths:
+        expr = path if path else "nil"
+        lines.append(
+            f"        case .{enum_case}{'(let p)' if path else ''}: return {expr}"
+        )
+    lines.extend(
+        [
+            "        }",
+            "    }",
+            "}",
+            "",
             "private struct _ServerNotificationEnvelope: Decodable {",
             "    let method: NotificationMethod",
             "}",
@@ -379,7 +521,7 @@ def write_server_requests(
     server_request_ts: str,
     schema_definitions: dict[str, object],
     out_path: Path,
-) -> None:
+) -> list[tuple[str, str, str, str, str, str | None]]:
     swift_types = collect_swift_types(swift_text)
     methods = collect_method_cases(swift_text, "ServerRequestMethod")
     ts_mapping = parse_union_with_params(server_request_ts, "ServerRequest", has_id=True)
@@ -520,6 +662,72 @@ def write_server_requests(
             "    }",
             "}",
             "",
+        ]
+    )
+
+    # Typed extractors: same pattern as ServerNotificationEvent.
+    id_cache: dict[tuple[str, str], str | None] = {}
+    thread_paths_sr: list[tuple[str, str | None]] = [
+        (enum_case, resolve_id_access(swift_text, params_type, "threadId", "thread", id_cache))
+        for enum_case, _, params_type, _, _, _ in entries
+    ]
+    turn_paths_sr: list[tuple[str, str | None]] = [
+        (enum_case, resolve_id_access(swift_text, params_type, "turnId", "turn", id_cache))
+        for enum_case, _, params_type, _, _, _ in entries
+    ]
+
+    lines.extend(
+        [
+            "extension AnyTypedServerRequest {",
+            "    /// Typed request extractor. Returns the typed request if this is of the",
+            "    /// requested method, `nil` otherwise.",
+            "    public func typed<Method: CodexServerRequestMethod>(",
+            "        as _: Method.Type",
+            "    ) -> TypedServerRequest<Method>? {",
+            "        guard self.method == Method.method else { return nil }",
+            "        switch self {",
+        ]
+    )
+    for enum_case, _, _, _, _, _ in entries:
+        lines.append(f"        case .{enum_case}(let request): return request as? TypedServerRequest<Method>")
+    lines.extend(
+        [
+            "        }",
+            "    }",
+            "",
+            "    /// The `threadId` carried by this request's params, or `nil`.",
+            "    public var threadId: String? {",
+            "        switch self {",
+        ]
+    )
+    for enum_case, path in thread_paths_sr:
+        if path:
+            inner = path.replace("p.", "request.params.")
+            lines.append(f"        case .{enum_case}(let request): return {inner}")
+        else:
+            lines.append(f"        case .{enum_case}: return nil")
+    lines.extend(
+        [
+            "        }",
+            "    }",
+            "",
+            "    /// The `turnId` carried by this request's params, or `nil`.",
+            "    public var turnId: String? {",
+            "        switch self {",
+        ]
+    )
+    for enum_case, path in turn_paths_sr:
+        if path:
+            inner = path.replace("p.", "request.params.")
+            lines.append(f"        case .{enum_case}(let request): return {inner}")
+        else:
+            lines.append(f"        case .{enum_case}: return nil")
+    lines.extend(
+        [
+            "        }",
+            "    }",
+            "}",
+            "",
             "private struct _ServerRequestEnvelope: Decodable {",
             "    let method: ServerRequestMethod",
             "}",
@@ -533,20 +741,27 @@ def write_server_requests(
     )
 
     out_path.write_text("\n".join(lines))
+    return entries
 
 
-# Decision types that expose `init(intent: ApprovalIntent)` via the hand-maintained
-# mapping in `Sources/CodexAppServerProtocol/Support/ApprovalDecision.swift`. When a
-# response struct has a `decision:` field of one of these types, emit an
-# `ApprovalResponse` conformance for it automatically.
-APPROVAL_DECISION_TYPES = {
-    "ReviewDecision",
-    "CommandExecutionApprovalDecision",
-    "FileChangeApprovalDecision",
-}
+def load_approval_decision_types(path: Path) -> set[str]:
+    """Derive the set of decision enums that expose ``init(intent: ApprovalIntent)``
+    by scanning the hand-maintained ``ApprovalDecision.swift`` support file.
+
+    This was a hardcoded set; deriving from the source of truth (the Support file
+    itself) means adding a new decision enum's intent mapping is a single-file edit
+    instead of requiring the generator's hardcoded list to stay in sync.
+    """
+    text = path.read_text()
+    pattern = re.compile(
+        r"extension\s+(\w+)\s*\{\s*"
+        r"(?:///[^\n]*\n\s*)*"
+        r"public\s+init\(intent:\s*ApprovalIntent\)"
+    )
+    return set(pattern.findall(text))
 
 
-def find_approval_response_types(swift_text: str) -> list[tuple[str, str]]:
+def find_approval_response_types(swift_text: str, decision_types: set[str]) -> list[tuple[str, str]]:
     """Return [(ResponseTypeName, DecisionTypeName), …] for every response struct
     whose shape matches `public struct X: Codable, Sendable { public var decision: Y; ...`
     where Y is one of ``APPROVAL_DECISION_TYPES``.
@@ -562,14 +777,39 @@ def find_approval_response_types(swift_text: str) -> list[tuple[str, str]]:
     seen: set[str] = set()
     for match in pattern.finditer(swift_text):
         response_name, decision_type = match.group(1), match.group(2)
-        if decision_type in APPROVAL_DECISION_TYPES and response_name not in seen:
+        if decision_type in decision_types and response_name not in seen:
             matches.append((response_name, decision_type))
             seen.add(response_name)
     return sorted(matches)
 
 
-def write_approval_mappings(swift_text: str, out_path: Path) -> None:
-    entries = find_approval_response_types(swift_text)
+def _approval_request_cases(
+    approval_response_types: list[tuple[str, str]],
+    server_request_entries: list[tuple[str, str, str, str, str, str | None]],
+) -> list[tuple[str, str]]:
+    """Cross-reference server-request entries (whose response types we know) with the
+    detected approval-shaped response types. Returns [(enum_case, base_name), ...] for
+    exactly the subset of ``AnyTypedServerRequest`` cases that are approval-shaped.
+    """
+    approval_responses = {name for name, _ in approval_response_types}
+    cases: list[tuple[str, str]] = []
+    for enum_case, base_name, _params, response_type, _wire, _desc in server_request_entries:
+        if response_type in approval_responses:
+            cases.append((enum_case, base_name))
+    return sorted(cases, key=lambda c: c[0])
+
+
+def write_approval_mappings(
+    swift_text: str,
+    decision_types: set[str],
+    server_request_entries: list[tuple[str, str, str, str, str, str | None]],
+    out_path: Path,
+) -> None:
+    approval_responses = find_approval_response_types(swift_text, decision_types)
+    approval_cases = _approval_request_cases(approval_responses, server_request_entries)
+    all_sr_cases = [(enum_case, base_name) for enum_case, base_name, _, _, _, _ in server_request_entries]
+    approval_case_set = {c for c, _ in approval_cases}
+
     lines = [
         "// GENERATED BY Scripts/generate-swift-bridge.py — DO NOT EDIT.",
         "",
@@ -577,13 +817,17 @@ def write_approval_mappings(swift_text: str, out_path: Path) -> None:
         "",
         "// `ApprovalIntent` → wire-decision mappings live hand-maintained in",
         "// `Sources/CodexAppServerProtocol/Support/ApprovalDecision.swift`. This file",
-        "// auto-emits an `ApprovalResponse` conformance for every response struct",
-        "// whose `decision` field is one of the known decision types, so new",
-        "// approval-shaped request/response pairs in upstream codex get covered on",
-        "// regeneration without hand-editing.",
+        "// auto-emits:",
+        "//   - an `ApprovalResponse` conformance for every response struct whose",
+        "//     `decision` field is one of the known decision types,",
+        "//   - the `AnyApprovalRequest` subset enum over just the approval-shaped",
+        "//     server requests, and",
+        "//   - the `AnyTypedServerRequest.asApprovalRequest` narrowing accessor.",
+        "// New approval-shaped request/response pairs in upstream codex get covered",
+        "// on regeneration without hand-editing.",
         "",
     ]
-    for response_name, decision_type in entries:
+    for response_name, decision_type in approval_responses:
         lines.extend(
             [
                 f"extension {response_name}: ApprovalResponse {{",
@@ -594,6 +838,73 @@ def write_approval_mappings(swift_text: str, out_path: Path) -> None:
                 "",
             ]
         )
+
+    lines.extend(
+        [
+            "/// Compile-time-safe subset of ``AnyTypedServerRequest`` containing only the",
+            "/// approval-shaped requests (those answered with an ``ApprovalIntent``).",
+            "///",
+            "/// Obtain one from ``AnyTypedServerRequest/asApprovalRequest`` and answer it",
+            "/// with `CodexClient.respond(to:intent:)`. UI code that treats every approval",
+            "/// uniformly needs one call site instead of one branch per approval method.",
+            "public enum AnyApprovalRequest: Sendable {",
+        ]
+    )
+    for enum_case, base_name in approval_cases:
+        lines.append(
+            f"    case {enum_case}(TypedServerRequest<ServerRequests.{base_name}>)"
+        )
+    lines.extend(
+        [
+            "",
+            "    /// JSON-RPC request identifier this approval is answering.",
+            "    public var id: RequestId {",
+            "        switch self {",
+        ]
+    )
+    for enum_case, _ in approval_cases:
+        lines.append(f"        case .{enum_case}(let request): return request.id")
+    lines.extend(
+        [
+            "        }",
+            "    }",
+            "",
+            "    /// Wire method that originated this approval.",
+            "    public var method: ServerRequestMethod {",
+            "        switch self {",
+        ]
+    )
+    for enum_case, _ in approval_cases:
+        lines.append(f"        case .{enum_case}: return .{enum_case}")
+    lines.extend(
+        [
+            "        }",
+            "    }",
+            "}",
+            "",
+            "extension AnyTypedServerRequest {",
+            "    /// Narrow to an ``AnyApprovalRequest`` if this is one of the approval-shaped",
+            "    /// server requests. Returns `nil` for non-approval requests",
+            "    /// (generic tool calls, permissions requests, mcp elicitation, auth refresh).",
+            "    public var asApprovalRequest: AnyApprovalRequest? {",
+            "        switch self {",
+        ]
+    )
+    for enum_case, _ in all_sr_cases:
+        if enum_case in approval_case_set:
+            lines.append(
+                f"        case .{enum_case}(let request): return .{enum_case}(request)"
+            )
+        else:
+            lines.append(f"        case .{enum_case}: return nil")
+    lines.extend(
+        [
+            "        }",
+            "    }",
+            "}",
+            "",
+        ]
+    )
     out_path.write_text("\n".join(lines))
 
 
@@ -665,6 +976,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument("--docc-out-dir", required=True, type=Path,
                         help="Directory to write generated DocC catalog articles into.")
+    parser.add_argument("--approval-decision-swift", required=True, type=Path,
+                        help="Path to Support/ApprovalDecision.swift, scanned to auto-derive "
+                             "the set of decision enums that have init(intent:) mappings.")
     parser.add_argument("--codex-version", required=True)
     return parser
 
@@ -698,14 +1012,20 @@ def main() -> int:
         schema_definitions,
         args.out_dir / "CodexServerNotificationsGenerated.swift",
     )
-    write_server_requests(
+    server_request_entries = write_server_requests(
         swift_text,
         server_request_ts,
         schema_definitions,
         args.out_dir / "CodexServerRequestsGenerated.swift",
     )
     write_metadata(args.out_dir / "CodexBindingMetadataGenerated.swift", args.codex_version)
-    write_approval_mappings(swift_text, args.out_dir / "ApprovalMappingsGenerated.swift")
+    decision_types = load_approval_decision_types(args.approval_decision_swift)
+    write_approval_mappings(
+        swift_text,
+        decision_types,
+        server_request_entries,
+        args.out_dir / "ApprovalMappingsGenerated.swift",
+    )
 
     # Auto-generated DocC catalog articles indexing every method by category.
     write_catalog_article(

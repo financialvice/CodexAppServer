@@ -68,6 +68,7 @@ python3 "${SCRIPT_DIR}/generate-swift-bridge.py" \
   --schema "${SCHEMA_DIR}/_combined.json" \
   --out-dir "${GENERATED_DIR}" \
   --docc-out-dir "${DOCC_OUT_DIR}" \
+  --approval-decision-swift "${PROJECT_DIR}/Sources/CodexAppServerProtocol/Support/ApprovalDecision.swift" \
   --codex-version "${PINNED_VERSION}"
 
 rm -rf "${SCHEMA_DIR}" "${TS_DIR}"

@@ -86,7 +86,7 @@ internal actor LocalCodexAppServerProcess {
                 process: process,
                 readyURL: readyURL,
                 broadcaster: broadcaster,
-                timeoutSeconds: 10
+                timeoutSeconds: max(1, Double(options.readinessTimeout.components.seconds))
             )
         } catch {
             stderrTask.cancel()

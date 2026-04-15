@@ -172,6 +172,57 @@ public enum AnyTypedServerRequest: Sendable {
     }
 }
 
+extension AnyTypedServerRequest {
+    /// Typed request extractor. Returns the typed request if this is of the
+    /// requested method, `nil` otherwise.
+    public func typed<Method: CodexServerRequestMethod>(
+        as _: Method.Type
+    ) -> TypedServerRequest<Method>? {
+        guard self.method == Method.method else { return nil }
+        switch self {
+        case .accountChatgptAuthTokensRefresh(let request): return request as? TypedServerRequest<Method>
+        case .applyPatchApproval(let request): return request as? TypedServerRequest<Method>
+        case .execCommandApproval(let request): return request as? TypedServerRequest<Method>
+        case .itemCommandExecutionRequestApproval(let request): return request as? TypedServerRequest<Method>
+        case .itemFileChangeRequestApproval(let request): return request as? TypedServerRequest<Method>
+        case .itemPermissionsRequestApproval(let request): return request as? TypedServerRequest<Method>
+        case .itemToolCall(let request): return request as? TypedServerRequest<Method>
+        case .itemToolRequestUserInput(let request): return request as? TypedServerRequest<Method>
+        case .mcpServerElicitationRequest(let request): return request as? TypedServerRequest<Method>
+        }
+    }
+
+    /// The `threadId` carried by this request's params, or `nil`.
+    public var threadId: String? {
+        switch self {
+        case .accountChatgptAuthTokensRefresh: return nil
+        case .applyPatchApproval: return nil
+        case .execCommandApproval: return nil
+        case .itemCommandExecutionRequestApproval(let request): return request.params.threadId
+        case .itemFileChangeRequestApproval(let request): return request.params.threadId
+        case .itemPermissionsRequestApproval(let request): return request.params.threadId
+        case .itemToolCall(let request): return request.params.threadId
+        case .itemToolRequestUserInput(let request): return request.params.threadId
+        case .mcpServerElicitationRequest(let request): return request.params.threadId
+        }
+    }
+
+    /// The `turnId` carried by this request's params, or `nil`.
+    public var turnId: String? {
+        switch self {
+        case .accountChatgptAuthTokensRefresh: return nil
+        case .applyPatchApproval: return nil
+        case .execCommandApproval: return nil
+        case .itemCommandExecutionRequestApproval(let request): return request.params.turnId
+        case .itemFileChangeRequestApproval(let request): return request.params.turnId
+        case .itemPermissionsRequestApproval(let request): return request.params.turnId
+        case .itemToolCall(let request): return request.params.turnId
+        case .itemToolRequestUserInput(let request): return request.params.turnId
+        case .mcpServerElicitationRequest(let request): return request.params.turnId
+        }
+    }
+}
+
 private struct _ServerRequestEnvelope: Decodable {
     let method: ServerRequestMethod
 }
